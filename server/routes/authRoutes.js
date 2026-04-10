@@ -1,1 +1,11 @@
-// Auth routes (register, login) will go here
+const express = require("express");
+const router = express.Router();
+
+// Import controller functions
+const { register, login } = require("../controllers/authController");
+
+// Define routes
+router.post("/register", register); // POST /api/auth/register
+router.post("/login", login);       // POST /api/auth/login
+
+module.exports = router;
