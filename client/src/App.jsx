@@ -4,17 +4,23 @@ import LandingPage from './components/LandingPage';
 import AuthPage from './components/AuthPage';
 import ProviderDashboard from './components/ProviderDashboard';
 import SeekerDashboard from './components/SeekerDashboard';
+import ProfilePage from './components/ProfilePage';
+import GigsPage from './components/GigsPage';
+import EarningsPage from './components/EarningsPage';
 import './index.css';
 
 function App() {
   const [view, setView] = useState('landing');
-  const [role, setRole] = useState(null); // 'provider' or 'seeker'
+  const [role, setRole] = useState(null);
   const [user, setUser] = useState(null);
+  const [isLargeText, setIsLargeText] = useState(false);
 
   // Check for existing session on load
   useEffect(() => {
     const savedUser = localStorage.getItem('gigride_user');
-    if (savedUser) {
+    const token = localStorage.getItem('gigride_token');
+    
+    if (savedUser && token) {
       const parsedUser = JSON.parse(savedUser);
       setUser(parsedUser);
       setRole(parsedUser.role);
@@ -24,19 +30,40 @@ function App() {
 
   const handleLogout = () => {
     localStorage.removeItem('gigride_user');
+    localStorage.removeItem('gigride_token');
     setUser(null);
     setRole(null);
     setView('landing');
   };
 
-  const handleLoginSuccess = (userData) => {
+  const handleLoginSuccess = (userData, token) => {
     localStorage.setItem('gigride_user', JSON.stringify(userData));
+    localStorage.setItem('gigride_token', token);
     setUser(userData);
     setRole(userData.role);
     setView('dashboard');
   };
 
+  const handleUpdateSession = (userData) => {
+    // Keeps token intact but updates local user memory
+    const token = localStorage.getItem('gigride_token');
+    localStorage.setItem('gigride_user', JSON.stringify(userData));
+    setUser(userData);
+  };
+
   const renderView = () => {
+    if (view === 'earnings' && user) {
+      return <EarningsPage user={user} />;
+    }
+
+    if (view === 'profile' && user) {
+      return <ProfilePage user={user} onUpdateSession={handleUpdateSession} />;
+    }
+
+    if (view === 'gigs' && user) {
+      return <GigsPage user={user} />;
+    }
+
     if (view === 'dashboard' && user) {
       return role === 'provider' 
         ? <ProviderDashboard user={user} /> 
@@ -64,13 +91,21 @@ function App() {
   };
 
   return (
-    <div className="app-container">
+    <div className={`app-container ${isLargeText ? 'large-text' : ''}`}>
       <Navbar 
-        onViewChange={(v) => {
-          if (v === 'landing') handleLogout();
-        }} 
+        onViewChange={(v) => { if (v === 'landing') handleLogout(); }} 
         user={user}
       />
+      
+      {/* Accessibility Control - Floating A+ Circle */}
+      <button 
+        className="floating-acc-btn" 
+        onClick={() => setIsLargeText(!isLargeText)}
+        aria-label="Toggle large text mode"
+      >
+        A+
+      </button>
+
       {renderView()}
       
       <footer style={{ 

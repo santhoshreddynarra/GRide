@@ -11,16 +11,16 @@ const Navbar = ({ onViewChange }) => {
         <li onClick={() => onViewChange('landing')}>
           <Home size={20} /> Home
         </li>
-        <li>
-          <Car size={20} /> Rides
+        <li onClick={() => onViewChange('gigs')} style={{ cursor: 'pointer' }}>
+          <Car size={20} /> Gigs
         </li>
-        <li>
+        <li onClick={() => onViewChange('earnings')} style={{ cursor: 'pointer' }}>
           <DollarSign size={20} /> Earnings
         </li>
-        <li>
+        <li onClick={() => onViewChange('profile')} style={{ cursor: 'pointer' }}>
           <User size={20} /> Profile
         </li>
-        <li>
+        <li style={{ cursor: 'pointer' }}>
           <LifeBuoy size={20} /> Support
         </li>
       </ul>
