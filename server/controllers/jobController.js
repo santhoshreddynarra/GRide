@@ -54,12 +54,15 @@ const getJobs = async (req, res) => {
     if (req.query.category && req.query.category !== "All Categories") {
       filter.category = normalizeCategory(req.query.category);
     }
+    if (req.query.location && req.query.location.trim() !== "") {
+      filter.location = { $regex: req.query.location, $options: "i" };
+    }
     if (req.query.search) {
       filter.$text = { $search: req.query.search };
     }
 
     const jobs = await Job.find(filter)
-      .populate("createdBy", "name email")
+      .populate("createdBy", "name email ratings")
       .sort({ createdAt: -1 });
 
     res.status(200).json({ jobs: jobs.map((j) => j.toJSON()) });
@@ -75,6 +78,20 @@ const getMyJobs = async (req, res) => {
   try {
     const jobs = await Job.find({ createdBy: req.user._id })
       .populate("applicants.seeker", "name email skills ratings")
+      .sort({ createdAt: -1 });
+    res.status(200).json({ jobs: jobs.map((j) => j.toJSON()) });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @route   GET /api/jobs/applied
+// @desc    Jobs applied to by the logged-in seeker
+// @access  Protected - seeker only
+const getMyAppliedJobs = async (req, res) => {
+  try {
+    const jobs = await Job.find({ "applicants.seeker": req.user._id })
+      .populate("createdBy", "name email ratings")
       .sort({ createdAt: -1 });
     res.status(200).json({ jobs: jobs.map((j) => j.toJSON()) });
   } catch (error) {
@@ -219,4 +236,5 @@ module.exports = {
   rejectApplicant,
   getJobApplications,
   completeJob,
+  getMyAppliedJobs,
 };

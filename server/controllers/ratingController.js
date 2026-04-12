@@ -44,4 +44,20 @@ const submitRating = async (req, res) => {
   }
 };
 
-module.exports = { submitRating };
+// @route   GET /api/ratings/me
+// @desc    Get all ratings the logged-in user has received
+// @access  Protected
+const getMyRatings = async (req, res) => {
+  try {
+    const ratings = await Rating.find({ to: req.user._id })
+      .populate("from", "name role")
+      .populate("job", "title payAmount payRate")
+      .sort({ createdAt: -1 });
+
+    res.status(200).json({ ratings });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { submitRating, getMyRatings };
