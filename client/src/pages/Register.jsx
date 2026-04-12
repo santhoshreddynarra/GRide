@@ -22,7 +22,7 @@ export default function Register() {
     setLoading(true);
 
     try {
-      const res = await axios.post("/api/register", { name, email, password, role });
+      const res = await axios.post("/api/auth/register", { name, email, password, role });
       
       const { token, user } = res.data;
       localStorage.setItem("token", token);
