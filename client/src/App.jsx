@@ -37,22 +37,26 @@ export default function App() {
         <Route path="/register" element={<Register />} />
         
         <Route 
-          path="/provider-dashboard" 
+          path="/provider/dashboard" 
           element={
             <ProtectedRoute requiredRole="provider">
               <ProviderDashboard user={user} />
             </ProtectedRoute>
           } 
         />
+        {/* backward-compat alias */}
+        <Route path="/provider-dashboard" element={<Navigate to="/provider/dashboard" replace />} />
         
         <Route 
-          path="/seeker-dashboard" 
+          path="/seeker/dashboard" 
           element={
             <ProtectedRoute requiredRole="seeker">
               <SeekerDashboard user={user} />
             </ProtectedRoute>
           } 
         />
+        {/* backward-compat alias */}
+        <Route path="/seeker-dashboard" element={<Navigate to="/seeker/dashboard" replace />} />
       </Routes>
     </BrowserRouter>
   );

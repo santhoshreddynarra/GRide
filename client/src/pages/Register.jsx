@@ -33,9 +33,9 @@ export default function Register() {
       
       setTimeout(() => {
         if (user.role === "provider") {
-          navigate("/provider-dashboard");
+          navigate("/provider/dashboard");
         } else {
-          navigate("/seeker-dashboard");
+          navigate("/seeker/dashboard");
         }
       }, 2500);
 

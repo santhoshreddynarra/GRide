@@ -20,13 +20,14 @@ const ProviderDashboard = ({ user }) => {
   const [tabLoading, setTabLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [inlineError, setInlineError] = useState(null);
+  const [successMsg, setSuccessMsg] = useState(null);
   
   // Rating logic
   const [ratingModal, setRatingModal] = useState({ show: false, jobId: null, seekerId: null, seekerName: '' });
   const [score, setScore] = useState(5);
   const [comment, setComment] = useState('');
 
-  const [formData, setFormData] = useState({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', payAmount: '', payRate: 'hour' });
+  const [formData, setFormData] = useState({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', stipend: '', payRate: 'hour', mobileNumber: '' });
 
   useEffect(() => {
     fetchInitialData();
@@ -75,8 +76,8 @@ const ProviderDashboard = ({ user }) => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      const res = await axios.get('/api/jobs/my', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setJobs(res.data.jobs || []);
+      const res = await axios.get('/api/gigs/my', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      setJobs(res.data.gigs || []);
     } catch (err) {
       setInlineError('Could not load your gigs right now — please try again.');
     } finally { setTabLoading(false); }
@@ -105,13 +106,25 @@ const ProviderDashboard = ({ user }) => {
 
   const handlePostJob = async (e) => {
     e.preventDefault();
+    setInlineError(null);
+    setSuccessMsg(null);
     try {
-      await axios.post('/api/jobs', formData, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      alert("Job posted successfully! 🚀");
-      setShowForm(false);
-      setFormData({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', payAmount: '', payRate: 'hour' });
-      fetchJobs();
-    } catch (err) { setInlineError(`Error: ${err.response?.data?.message || err.message}`); }
+      const res = await axios.post('/api/gigs', {
+        title: formData.title,
+        description: formData.description,
+        category: formData.category,
+        location: formData.location,
+        stipend: Number(formData.stipend),
+        payRate: formData.payRate,
+        mobileNumber: formData.mobileNumber,
+      }, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      setSuccessMsg(`✅ "${res.data.gig.title}" posted successfully! It is now visible to all seekers.`);
+      setFormData({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', stipend: '', payRate: 'hour', mobileNumber: '' });
+      fetchJobs(); // refresh provider's list
+    } catch (err) {
+      console.error('[ProviderDashboard] handlePostJob error:', err.response?.status, err.response?.data);
+      setInlineError(err.response?.data?.message || err.message || 'Failed to post gig.');
+    }
   };
 
   const handleCompleteJob = async (jobId) => {
@@ -133,10 +146,10 @@ const ProviderDashboard = ({ user }) => {
   };
 
   const TABS = [
-    { id: 'profile', label: 'Dashboard', icon: <Building2 size={18} /> },
-    { id: 'gigs', label: 'Active Dispatches (Applicants)', icon: <Briefcase size={18} /> },
-    { id: 'history', label: 'Completed', icon: <CheckCircle size={18} /> },
-    { id: 'hires', label: 'Recent Hires', icon: <Users size={18} /> },
+    { id: 'profile', label: 'Profile', icon: <Building2 size={18} /> },
+    { id: 'gigs', label: 'Post Gigs', icon: <Plus size={18} /> },
+    { id: 'history', label: 'History', icon: <CheckCircle size={18} /> },
+    { id: 'hires', label: 'Seekers', icon: <Users size={18} /> },
     { id: 'ratings', label: 'Reviews', icon: <Star size={18} /> }
   ];
 
@@ -325,6 +338,18 @@ const ProviderDashboard = ({ user }) => {
                       <Plus className="text-[#2e7d32]" /> Publish New Dispatch
                     </h3>
                     <form onSubmit={handlePostJob} className="space-y-6">
+                      {successMsg && (
+                        <div className="bg-green-50 border border-green-300 text-green-800 p-4 rounded-xl font-bold flex items-center gap-3 animate-in fade-in">
+                          <CheckCircle size={20} className="text-green-600 shrink-0" />
+                          <p>{successMsg}</p>
+                        </div>
+                      )}
+                      {inlineError && (
+                        <div className="bg-red-50 border border-red-200 text-red-700 p-4 rounded-xl font-bold flex items-center gap-3">
+                          <AlertCircle size={20} className="shrink-0" />
+                          <p>{inlineError}</p>
+                        </div>
+                      )}
                       <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <label className="block text-sm font-black text-gray-700 mb-2">Job Title</label>
@@ -341,22 +366,21 @@ const ProviderDashboard = ({ user }) => {
                         <label className="block text-sm font-black text-gray-700 mb-2">Requirements / Description</label>
                         <textarea className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium min-h-[120px]" placeholder="Explain exactly what you need built, fixed, or delivered..." value={formData.description} onChange={e => setFormData({...formData, description: e.target.value})} required />
                       </div>
-                      <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
                           <label className="block text-sm font-black text-gray-700 mb-2">Location</label>
                           <input className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" placeholder="Street, City" value={formData.location} onChange={e => setFormData({...formData, location: e.target.value})} required />
                         </div>
                         <div>
-                          <label className="block text-sm font-black text-gray-700 mb-2">Urgency Level</label>
-                          <select className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" value={formData.urgency} onChange={e => setFormData({...formData, urgency: e.target.value})}>
-                            <option value="instant">Instant ⚡ (Emergency)</option>
-                            <option value="part-time">Standard (Scheduled)</option>
-                          </select>
+                          <label className="block text-sm font-black text-gray-700 mb-2">Mobile Number</label>
+                          <input type="tel" className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" placeholder="+91 99999 00000" value={formData.mobileNumber} onChange={e => setFormData({...formData, mobileNumber: e.target.value})} />
                         </div>
+                      </div>
+                      <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
                         <div>
-                          <label className="block text-sm font-black text-gray-700 mb-2">Stipend Rate</label>
+                          <label className="block text-sm font-black text-gray-700 mb-2">Pay Rate (₹)</label>
                           <div className="flex gap-2">
-                            <input type="number" className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" placeholder="Amount" value={formData.payAmount} onChange={e => setFormData({...formData, payAmount: e.target.value})} required />
+                            <input type="number" className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" placeholder="e.g. 500" value={formData.stipend} onChange={e => setFormData({...formData, stipend: e.target.value})} required />
                             <select className="w-full p-4 border border-gray-200 rounded-2xl bg-gray-50 focus:ring-2 focus:ring-[#2e7d32] font-medium" value={formData.payRate} onChange={e => setFormData({...formData, payRate: e.target.value})}>
                               <option value="hour">/ Hour</option>
                               <option value="day">/ Day</option>
@@ -374,44 +398,49 @@ const ProviderDashboard = ({ user }) => {
                 ) : (
                   <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
                     {renderInlineError()}
-                    <h2 className="text-2xl font-black text-gray-900 mb-8"><Briefcase className="inline mr-2 text-[#2e7d32]" /> Active Dispatches</h2>
-                    {tabLoading ? renderTabSkeletons() : jobs.filter(j => j.status !== 'completed').length === 0 ? (
-                      <div className="py-16 text-center bg-gray-50 rounded-3xl border border-dashed border-gray-300">
-                        <AlertCircle size={48} className="text-gray-300 mx-auto mb-4" />
-                        <p className="text-xl font-black text-gray-500 mb-2">Nothing deployed yet.</p>
-                        <button onClick={() => setShowForm(true)} className="mt-4 px-6 py-2 bg-[#2e7d32] text-white font-black rounded-xl hover:bg-[#1b5e20]">Post a Gig</button>
-                      </div>
-                    ) : (
-                      <div className="space-y-6 animate-in fade-in duration-500">
-                        {jobs.filter(j => j.status !== 'completed').map(job => {
-                          return (
-                            <div key={job._id} className="p-6 border border-gray-200 rounded-3xl grid grid-cols-1 lg:grid-cols-3 gap-6 hover:shadow-lg transition-all group">
-                               <div className="lg:col-span-2">
-                                 <div className="flex items-center gap-3 mb-2">
-                                    <span className="px-3 py-1 bg-green-50 border border-green-200 text-green-700 font-black text-xs uppercase tracking-wider rounded-lg">{job.category}</span>
-                                    <span className="px-3 py-1 bg-orange-50 border border-orange-100 text-orange-700 font-black text-xs uppercase tracking-wider rounded-lg">${job.payAmount || job.price} / {job.payRate}</span>
-                                    <span className={`px-3 py-1 bg-gray-100 font-black text-xs uppercase tracking-wider rounded-lg ${job.status === 'filled' ? 'text-[#2e7d32] border border-[#2e7d32]' : 'text-gray-600 border border-gray-200'}`}>{job.status === 'filled' ? 'IN PROGRESS' : 'OPEN'}</span>
-                                 </div>
-                                 <h4 className="text-xl font-black text-gray-900 group-hover:text-[#2e7d32] transition-colors">{job.title}</h4>
-                                 <p className="text-gray-500 font-bold text-sm mt-1 mb-4"><MapPin size={14} className="inline mr-1" />{job.location}</p>
-                                 <p className="text-sm text-gray-600 line-clamp-2">{job.description}</p>
-                               </div>
-                               
-                               <div className="flex flex-col items-center lg:items-end justify-center bg-gray-50 p-4 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition-all">
-                                  <p className="text-xs font-black text-gray-400 tracking-widest mb-1">APPLICANTS</p>
-                                  <p className="text-3xl font-black text-[#2e7d32] mb-4">{job.applicants?.length || 0}</p>
-                                  <div className="w-full flex gap-2">
-                                     <button className="flex-1 py-2 bg-gray-200 text-gray-700 font-black rounded-lg hover:bg-gray-300 text-sm active:scale-95" onClick={() => alert('Applicant management UI coming soon!')}>View Applicants</button>
-                                     {job.status === 'filled' && (
-                                       <button onClick={() => handleCompleteJob(job._id)} className="flex-1 py-2 bg-[#2e7d32] text-white font-black rounded-lg hover:bg-[#1b5e20] text-sm active:scale-95">Mark Complete</button>
-                                     )}
-                                  </div>
-                               </div>
-                            </div>
-                          )
-                        })}
-                      </div>
-                    )}
+                    <h2 className="text-2xl font-black text-gray-900 mb-8"><Briefcase className="inline mr-2 text-[#2e7d32]" /> Active</h2>
+                      {tabLoading ? renderTabSkeletons() : jobs.filter(j => j.isOpen !== false).length === 0 ? (
+                       <div className="py-16 text-center bg-gray-50 rounded-3xl border border-dashed border-gray-300">
+                         <AlertCircle size={48} className="text-gray-300 mx-auto mb-4" />
+                         <p className="text-xl font-black text-gray-500 mb-2">No gigs posted yet.</p>
+                         <button onClick={() => setShowForm(true)} className="mt-4 px-6 py-2 bg-[#2e7d32] text-white font-black rounded-xl hover:bg-[#1b5e20]">Post a Gig</button>
+                       </div>
+                     ) : (
+                       <div className="space-y-6 animate-in fade-in duration-500">
+                         {jobs.filter(j => j.isOpen !== false).map(gig => (
+                           <div key={gig._id} className="p-6 border border-gray-200 rounded-3xl grid grid-cols-1 lg:grid-cols-3 gap-6 hover:shadow-lg transition-all group">
+                              <div className="lg:col-span-2">
+                                <div className="flex items-center gap-3 mb-2">
+                                   <span className="px-3 py-1 bg-green-50 border border-green-200 text-green-700 font-black text-xs uppercase tracking-wider rounded-lg">{gig.category || 'General'}</span>
+                                   <span className="px-3 py-1 bg-orange-50 border border-orange-100 text-orange-700 font-black text-xs uppercase tracking-wider rounded-lg">₹{gig.stipend} / {gig.payRate || 'hour'}</span>
+                                   <span className="px-3 py-1 bg-gray-100 text-gray-600 border border-gray-200 font-black text-xs uppercase tracking-wider rounded-lg">{gig.isOpen ? 'OPEN' : 'CLOSED'}</span>
+                                </div>
+                                <h4 className="text-xl font-black text-gray-900 group-hover:text-[#2e7d32] transition-colors">{gig.title}</h4>
+                                <p className="text-gray-500 font-bold text-sm mt-1 mb-4"><MapPin size={14} className="inline mr-1" />{gig.location || 'Location not set'}</p>
+                                <p className="text-sm text-gray-600 line-clamp-2">{gig.description}</p>
+                                {gig.mobileNumber && (
+                                  <p className="text-sm font-bold text-gray-500 mt-2">📞 {gig.mobileNumber}</p>
+                                )}
+                              </div>
+                              
+                              <div className="flex flex-col items-center lg:items-end justify-center bg-gray-50 p-4 rounded-2xl border border-gray-100">
+                                 <p className="text-xs font-black text-gray-400 tracking-widest mb-1">POSTED</p>
+                                 <p className="text-sm font-black text-[#2e7d32] mb-4">{new Date(gig.createdAt).toLocaleDateString()}</p>
+                                 <button
+                                   className="w-full py-2 bg-red-50 text-red-600 border border-red-200 font-black rounded-lg hover:bg-red-100 text-sm active:scale-95"
+                                   onClick={async () => {
+                                     if (!window.confirm('Close this gig?')) return;
+                                     try {
+                                       await axios.patch(`/api/gigs/${gig._id}/close`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+                                       fetchJobs();
+                                     } catch(e) { console.error(e); }
+                                   }}
+                                 >Close Gig</button>
+                              </div>
+                           </div>
+                         ))}
+                       </div>
+                     )}
                   </div>
                 )}
              </div>

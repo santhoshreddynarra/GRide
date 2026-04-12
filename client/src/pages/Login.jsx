@@ -25,9 +25,9 @@ export default function Login() {
       localStorage.setItem("role", user.role);
 
       if (user.role === "provider") {
-        navigate("/provider-dashboard");
+        navigate("/provider/dashboard");
       } else {
-        navigate("/seeker-dashboard");
+        navigate("/seeker/dashboard");
       }
     } catch (err) {
       setError(err.response?.data?.message || "Login failed. Please try again.");

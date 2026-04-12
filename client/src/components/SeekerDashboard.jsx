@@ -82,14 +82,21 @@ const SeekerDashboard = ({ user }) => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      let query = '/api/jobs?';
-      if (filterType !== 'all') query += `urgency=${filterType}&`;
-      if (filterCategory !== 'All Categories') query += `category=${filterCategory}&`;
-      if (filterLocation) query += `location=${filterLocation}&`;
-      const res = await axios.get(query, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setJobs(res.data.jobs || []);
+      const params = new URLSearchParams();
+      if (filterType !== 'all') params.append('urgency', filterType);
+      if (filterCategory !== 'All Categories') params.append('category', filterCategory);
+      if (filterLocation) params.append('location', filterLocation);
+
+      const res = await axios.get(`/api/gigs?${params.toString()}`, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      // Backend returns { gigs: [...] }
+      setJobs(res.data.gigs || []);
     } catch (err) {
-      setInlineError('Could not load your gigs right now — please try again.');
+      console.error('[SeekerDashboard] fetchExploreJobs error:', err.response?.status, err.response?.data);
+      setInlineError(
+        err.response?.data?.message || 'Could not load gigs right now — please try again.'
+      );
     } finally { setTabLoading(false); }
   };
 
@@ -132,14 +139,17 @@ const SeekerDashboard = ({ user }) => {
     }));
   };
 
-  const handleApply = async (jobId, type) => {
-    const isInstant = type === 'instant';
-    if (isInstant && !window.confirm("Instantly claim this gig?")) return;
+  const handleApply = async (gigId) => {
     try {
-      await axios.post(`/api/jobs/${jobId}/${isInstant ? 'claim' : 'apply'}`, {}, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      alert(isInstant ? "⚡ Gig claimed!" : "✅ Application sent!");
+      await axios.post(`/api/gigs/${gigId}/apply`, {}, {
+        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      });
+      alert("✅ Application sent! The provider will review your request.");
       fetchExploreJobs();
-    } catch (err) { setInlineError(err.response?.data?.message || 'Failed to apply'); }
+    } catch (err) {
+      console.error('[SeekerDashboard] handleApply error:', err.response?.status, err.response?.data);
+      setInlineError(err.response?.data?.message || 'Failed to apply — please try again.');
+    }
   };
 
   const handleRateProvider = async (e) => {
@@ -371,36 +381,33 @@ const SeekerDashboard = ({ user }) => {
                  </div>
                ) : (
                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-500">
-                    {jobs.map(job => (
-                      <div key={job._id} className="group relative bg-white border border-gray-200 hover:border-[#0277bd] hover:shadow-xl transition-all rounded-3xl p-0 flex flex-col overflow-hidden">
-                         {job.urgency === 'instant' && (
-                            <div className="absolute top-4 right-4 bg-red-500 text-white text-[0.6rem] font-black px-3 py-1 rounded-full uppercase tracking-widest shadow-sm z-10">Instant ⚡</div>
-                         )}
+                    {jobs.map(gig => (
+                      <div key={gig._id} className="group relative bg-white border border-gray-200 hover:border-[#0277bd] hover:shadow-xl transition-all rounded-3xl p-0 flex flex-col overflow-hidden">
                          <div className="h-40 bg-gray-50 relative overflow-hidden flex items-center justify-center p-6 border-b border-gray-100 group-hover:bg-[#e0f7fa] transition-colors duration-500">
                              <Briefcase size={48} className="text-[#0277bd]/30 group-hover:scale-110 group-hover:text-[#0277bd] transition-all duration-500" />
                          </div>
                          <div className="p-6 flex flex-col flex-1">
                            <div className="flex justify-between items-start mb-2">
-                             <span className="text-xs font-black uppercase tracking-wider text-[#0277bd]">{job.category}</span>
-                             <div className="flex gap-1 items-center bg-gray-50 px-2 py-1 rounded text-xs font-bold text-gray-600"><Star size={12} fill="#eab308" className="text-yellow-500" /> {job.createdBy?.ratings?.average || 'New'}</div>
+                             <span className="text-xs font-black uppercase tracking-wider text-[#0277bd]">{gig.category || 'General'}</span>
+                             <div className="flex gap-1 items-center bg-gray-50 px-2 py-1 rounded text-xs font-bold text-gray-600"><Star size={12} fill="#eab308" className="text-yellow-500" /> {gig.providerId?.ratings?.average || 'New'}</div>
                            </div>
-                           <h3 className="text-lg font-black text-gray-900 mb-1 leading-tight line-clamp-2" title={job.title}>{job.title}</h3>
-                           <p className="text-sm font-bold text-gray-400 line-clamp-1 mb-4 flex items-center gap-1"><UserIcon size={14} /> {job.createdBy?.name || 'Local Provider'}</p>
+                           <h3 className="text-lg font-black text-gray-900 mb-1 leading-tight line-clamp-2" title={gig.title}>{gig.title}</h3>
+                           <p className="text-sm font-bold text-gray-400 line-clamp-1 mb-4 flex items-center gap-1"><UserIcon size={14} /> {gig.providerId?.name || 'Local Provider'}</p>
                            
                            <div className="mt-auto">
-                             <div className="flex items-center gap-2 text-sm text-gray-500 mb-3"><MapPin size={16} className="text-gray-400 shrink-0" /> <span className="truncate">{job.location}</span></div>
+                             <div className="flex items-center gap-2 text-sm text-gray-500 mb-3"><MapPin size={16} className="text-gray-400 shrink-0" /> <span className="truncate">{gig.location || 'Location not specified'}</span></div>
                              <div className="flex flex-col">
                                 <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Pay Rate</span>
-                                <span className="text-2xl font-black text-green-700">₹{job.payAmount || job.price}<span className="text-sm text-gray-500 font-bold">/{job.payRate}</span></span>
+                                <span className="text-2xl font-black text-green-700">₹{gig.stipend}<span className="text-sm text-gray-500 font-bold">/{gig.payRate || 'hour'}</span></span>
                              </div>
                            </div>
                          </div>
                          <div className="p-4 border-t border-gray-100 bg-white">
                            <button 
-                              onClick={() => handleApply(job._id, job.urgency)}
+                              onClick={() => handleApply(gig._id)}
                               className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 text-white shadow-md bg-[#0277bd] hover:bg-[#01579b]"
                             >
-                             {job.urgency === 'instant' ? 'CLAIM NOW ⚡' : 'Apply Now'}
+                             Apply Now
                            </button>
                          </div>
                       </div>

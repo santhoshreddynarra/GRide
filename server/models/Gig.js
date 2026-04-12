@@ -14,12 +14,30 @@ const gigSchema = new mongoose.Schema(
     },
     stipend: {
       type: Number,
-      required: [true, "Stipend is required"],
       default: 0,
     },
-    rating: {
-      type: Number,
-      default: 0,
+    payRate: {
+      type: String,
+      enum: ["hour", "day", "project"],
+      default: "hour",
+    },
+    location: {
+      type: String,
+      default: "",
+      trim: true,
+    },
+    category: {
+      type: String,
+      default: "other",
+      trim: true,
+    },
+    mobileNumber: {
+      type: String,
+      default: "",
+    },
+    isOpen: {
+      type: Boolean,
+      default: true,
     },
     providerId: {
       type: mongoose.Schema.Types.ObjectId,
