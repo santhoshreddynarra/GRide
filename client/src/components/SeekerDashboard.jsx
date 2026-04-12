@@ -40,7 +40,7 @@ const SeekerDashboard = ({ user }) => {
 
     try {
       const token = localStorage.getItem('gigride_token');
-      const res = await fetch(`http://127.0.0.1:5000/api/jobs/${jobId}/apply`, {
+      const res = await fetch(`/api/jobs/${jobId}/apply`, {
         method: 'POST',
         headers: { 'Authorization': `Bearer ${token}` }
       });

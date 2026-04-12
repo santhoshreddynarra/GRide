@@ -1,5 +1,33 @@
 const mongoose = require("mongoose");
 
+/** Stored as lowercase slugs (matches API / easy querying) */
+const JOB_CATEGORIES = [
+  "plumber",
+  "electrician",
+  "carpenter",
+  "tutor",
+  "delivery_helper",
+  "other_skilled",
+  "other",
+];
+
+const applicantSchema = new mongoose.Schema(
+  {
+    seeker: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+    },
+    appliedAt: { type: Date, default: Date.now },
+    status: {
+      type: String,
+      enum: ["pending", "accepted", "rejected"],
+      default: "pending",
+    },
+  },
+  { _id: true }
+);
+
 const jobSchema = new mongoose.Schema(
   {
     title: {
@@ -14,32 +42,37 @@ const jobSchema = new mongoose.Schema(
     category: {
       type: String,
       required: [true, "Category is required"],
-      enum: ["Electrician", "Plumber", "Carpenter", "Tutor", "Delivery helper", "Other skilled trades", "Other"],
+      enum: JOB_CATEGORIES,
     },
-    urgency: {
-      type: String,
-      required: true,
-      enum: ["instant", "part-time", "full-time"],
-      default: "part-time",
+    price: {
+      type: Number,
+      required: [true, "Price is required"],
+      min: 0,
     },
     location: {
       type: String,
       required: [true, "Location is required"],
+      trim: true,
     },
-    payAmount: {
-      type: Number,
-      required: [true, "Pay amount is required"],
+    createdBy: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: [true, "createdBy (user id) is required"],
+    },
+    applicants: {
+      type: [applicantSchema],
+      default: [],
+    },
+    /** Kept for instant-claim and filtering */
+    urgency: {
+      type: String,
+      enum: ["instant", "part-time", "full-time"],
+      default: "part-time",
     },
     payRate: {
       type: String,
       enum: ["hour", "day", "project"],
       default: "hour",
-      required: true,
-    },
-    providerId: {
-      type: mongoose.Schema.Types.ObjectId,
-      ref: "User",
-      required: true,
     },
     status: {
       type: String,
@@ -50,22 +83,20 @@ const jobSchema = new mongoose.Schema(
       type: Boolean,
       default: true,
     },
-    applicants: [
-      {
-        seeker: { type: mongoose.Schema.Types.ObjectId, ref: "User" },
-        appliedAt: { type: Date, default: Date.now },
-        status: {
-          type: String,
-          enum: ["pending", "accepted", "rejected"],
-          default: "pending",
-        },
-      },
-    ],
   },
   { timestamps: true }
 );
 
-// Create compound text index for search functionality
 jobSchema.index({ title: "text", description: "text" });
 
+const legacyJsonTransform = (_doc, ret) => {
+  ret.payAmount = ret.price;
+  ret.providerId = ret.createdBy;
+  return ret;
+};
+
+jobSchema.set("toJSON", { virtuals: true, transform: legacyJsonTransform });
+jobSchema.set("toObject", { virtuals: true, transform: legacyJsonTransform });
+
 module.exports = mongoose.model("Job", jobSchema);
+module.exports.JOB_CATEGORIES = JOB_CATEGORIES;

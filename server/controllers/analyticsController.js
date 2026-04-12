@@ -10,10 +10,7 @@ const getAnalytics = async (req, res) => {
 
     // Fetch jobs associated with user
     const jobs = await Job.find({
-      $or: [
-        { provider: req.user._id },
-        { "applicants.seeker": req.user._id }
-      ]
+      $or: [{ createdBy: req.user._id }, { "applicants.seeker": req.user._id }],
     }).sort({ createdAt: -1 });
 
     let totalAmount = 0;
@@ -24,11 +21,10 @@ const getAnalytics = async (req, res) => {
     if (role === "provider") {
       // Loop through jobs to calculate SPENT amount and active gigs
       for (const job of jobs) {
-        if (job.provider.toString() === userId) {
-          // If job is explicitly closed or has accepted seekers, treat as expense
-          const hasAccepted = job.applicants.some(a => a.status === "accepted");
+        if (job.createdBy.toString() === userId) {
+          const hasAccepted = job.applicants.some((a) => a.status === "accepted");
           if (!job.isOpen || hasAccepted) {
-            totalAmount += (job.pay?.amount || 0);
+            totalAmount += job.price || 0;
             completedGigs++;
             transactions.push(job);
           } else {
@@ -41,9 +37,11 @@ const getAnalytics = async (req, res) => {
       for (const job of jobs) {
         const myApplication = job.applicants.find(a => a.seeker.toString() === userId);
         if (myApplication) {
-          if (myApplication.status === "accepted" || (!job.isOpen && myApplication.status !== "rejected" && job.type === 'instant')) {
-            // Seeker secured this gig
-            totalAmount += (job.pay?.amount || 0);
+          if (
+            myApplication.status === "accepted" ||
+            (!job.isOpen && myApplication.status !== "rejected" && job.urgency === "instant")
+          ) {
+            totalAmount += job.price || 0;
             completedGigs++;
             transactions.push(job);
           } else if (job.isOpen) {
