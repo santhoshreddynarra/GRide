@@ -76,13 +76,29 @@ const jobSchema = new mongoose.Schema(
     },
     status: {
       type: String,
-      enum: ["open", "in-progress", "filled", "completed"],
+      enum: ["open", "accepted", "in-progress", "filled", "completed"],
       default: "open",
     },
     isOpen: {
       type: Boolean,
       default: true,
     },
+    /** The seeker accepted by the provider */
+    selectedCandidate: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      default: null,
+    },
+    /** Set after payment is confirmed */
+    paymentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Payment",
+      default: null,
+    },
+    /** Whether provider has reviewed seeker for this job */
+    providerReviewed: { type: Boolean, default: false },
+    /** Whether seeker has reviewed provider for this job */
+    seekerReviewed: { type: Boolean, default: false },
   },
   { timestamps: true }
 );

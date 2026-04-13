@@ -5,11 +5,12 @@ import Register from "./pages/Register";
 import ProviderDashboard from "./components/ProviderDashboard";
 import SeekerDashboard from "./components/SeekerDashboard";
 import ProfilePage from "./components/ProfilePage";
+import PaymentPage from "./pages/PaymentPage";
 
 // Simple protected route wrapper
 const ProtectedRoute = ({ children, requiredRole }) => {
-  const token = localStorage.getItem("token");
-  const role = localStorage.getItem("role");
+  const token = localStorage.getItem("token") || localStorage.getItem("gigride_token");
+  const role = localStorage.getItem("role") || localStorage.getItem("gigride_role");
   
   if (!token || !role) {
     return (
@@ -28,7 +29,11 @@ const ProtectedRoute = ({ children, requiredRole }) => {
 };
 
 export default function App() {
-  const user = JSON.parse(localStorage.getItem("user") || "{}");
+  const user = (() => {
+    try {
+      return JSON.parse(localStorage.getItem("user") || localStorage.getItem("gigride_user") || "null") || {};
+    } catch { return {}; }
+  })();
 
   return (
     <BrowserRouter>
@@ -65,6 +70,16 @@ export default function App() {
           element={
             <ProtectedRoute>
               <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Payment — provider only */}
+        <Route
+          path="/provider/payment/:jobId"
+          element={
+            <ProtectedRoute requiredRole="provider">
+              <PaymentPage />
             </ProtectedRoute>
           }
         />

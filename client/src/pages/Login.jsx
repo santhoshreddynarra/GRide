@@ -20,9 +20,13 @@ export default function Login() {
       const res = await axios.post("/api/auth/login", { email, password });
       const { token, user } = res.data;
 
+      // Save under both key conventions so all components work regardless
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("role", user.role);
+      localStorage.setItem("gigride_token", token);
+      localStorage.setItem("gigride_user", JSON.stringify(user));
+      localStorage.setItem("gigride_role", user.role);
 
       if (user.role === "provider") {
         navigate("/provider/dashboard");

@@ -1,27 +1,46 @@
-import React, { useState, useEffect } from 'react';
-import { Plus, Briefcase, MapPin, Star, Users, Navigation, User as UserIcon, Settings, CheckCircle, Activity, Building2, AlertCircle } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { useNavigate } from 'react-router-dom';
+import { Plus, Briefcase, MapPin, Star, Users, Navigation, User as UserIcon, Settings, CheckCircle, Activity, Building2, AlertCircle, X, ChevronDown, ChevronUp, CreditCard, ClipboardList } from 'lucide-react';
 import axios from 'axios';
+import ReviewModal from './ReviewModal';
 
 const CATEGORIES = ["Electrician", "Plumber", "Carpenter", "Tutor", "Delivery helper", "Other skilled trades", "Other"];
 
-const ProviderDashboard = ({ user }) => {
+const getToken = () => localStorage.getItem('token') || localStorage.getItem('gigride_token') || '';
+const getCachedUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user')) ||
+           JSON.parse(localStorage.getItem('gigride_user')) || null;
+  } catch { return null; }
+};
+
+const ProviderDashboard = ({ user: userProp }) => {
+  const user = userProp || getCachedUser() || {};
+  const navigate = useNavigate();
   const [activeTab, setActiveTab] = useState('profile');
 
   // Core Data States. Initialize with `user` from localStorage
   const [profile, setProfile] = useState(user);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editForm, setEditForm] = useState({ name: user.name, companyName: '', location: '' });
+  const [editForm, setEditForm] = useState({ name: user?.name || '', companyName: '', location: '' });
 
   const [activityFeed, setActivityFeed] = useState([]);
   const [ratingsReceived, setRatingsReceived] = useState([]);
   const [jobs, setJobs] = useState([]);
-  
+  // Expanded applicants accordion
+  const [expandedJobId, setExpandedJobId] = useState(null);
+  // Toast
+  const [toast, setToast] = useState(null);
+  const toastTimer = useRef(null);
+  // Review modal
+  const [reviewModal, setReviewModal] = useState(null); // { jobId, jobTitle, receiverName }
+
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
   const [showForm, setShowForm] = useState(false);
   const [inlineError, setInlineError] = useState(null);
   const [successMsg, setSuccessMsg] = useState(null);
-  
+
   // Rating logic
   const [ratingModal, setRatingModal] = useState({ show: false, jobId: null, seekerId: null, seekerName: '' });
   const [score, setScore] = useState(5);
@@ -29,13 +48,19 @@ const ProviderDashboard = ({ user }) => {
 
   const [formData, setFormData] = useState({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', stipend: '', payRate: 'hour', mobileNumber: '' });
 
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  };
+
   useEffect(() => {
     fetchInitialData();
   }, []);
 
   useEffect(() => {
     setInlineError(null); // Clear errors on tab switch
-    if (activeTab === 'gigs' || activeTab === 'history' || activeTab === 'hires') fetchJobs();
+    if (activeTab === 'gigs' || activeTab === 'history' || activeTab === 'hires' || activeTab === 'applicants') fetchJobs();
     if (activeTab === 'ratings') fetchMyRatings();
     if (activeTab === 'profile') { fetchProfile(); fetchActivity(); }
   }, [activeTab]);
@@ -47,39 +72,55 @@ const ProviderDashboard = ({ user }) => {
   };
 
   const fetchProfile = async () => {
+    const uid = user?.id || user?._id;
+    if (!uid) {
+      try {
+        const res = await axios.get('/api/auth/me', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+        const freshUser = res.data?.user;
+        if (freshUser) {
+          setProfile(freshUser);
+          setEditForm({ name: freshUser.name || '', companyName: freshUser.companyName || '', location: freshUser.location || '' });
+        }
+      } catch { /* silent */ }
+      return;
+    }
     try {
-      const res = await axios.get(`/api/profile/${user.id || user._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setProfile(res.data.user);
-      setEditForm({
-        name: res.data.user.name,
-        companyName: res.data.user.companyName || '',
-        location: res.data.user.location || ''
-      });
-    } catch (err) { 
-       console.error(err); 
-       if (err.response?.status === 401) {
-          localStorage.clear();
-          window.location.href = '/login';
-       }
-       setInlineError('Could not load your complete profile right now — please try again.');
+      const res = await axios.get(`/api/profile/${uid}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const freshUser = res.data?.user;
+      if (freshUser) {
+        setProfile(freshUser);
+        setEditForm({ name: freshUser.name || '', companyName: freshUser.companyName || '', location: freshUser.location || '' });
+      }
+    } catch (err) {
+      console.error('[ProviderDashboard] fetchProfile error:', err?.response?.status);
+      if (err?.response?.status === 401) {
+        localStorage.clear();
+        window.location.href = '/login';
+        return;
+      }
+      const cached = getCachedUser();
+      if (cached && !profile?.name) setProfile(cached);
+      setInlineError('Could not refresh profile — showing cached data.');
     }
   };
 
   const fetchActivity = async () => {
     try {
-      const res = await axios.get('/api/profile/activity', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.get('/api/profile/activity', { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setActivityFeed(res.data.activity || []);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('[ProviderDashboard] fetchActivity:', err?.message); }
   };
 
   const fetchJobs = async () => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      const res = await axios.get('/api/gigs/my', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setJobs(res.data.gigs || []);
+      // Use /api/jobs/my which populates applicants.seeker with name/email
+      const res = await axios.get('/api/jobs/my', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      setJobs(res.data.jobs || []);
     } catch (err) {
-      setInlineError('Could not load your gigs right now — please try again.');
+      console.error('[ProviderDashboard] fetchJobs error:', err?.response?.status, err?.response?.data);
+      setInlineError('Could not load your jobs right now — please try again.');
     } finally { setTabLoading(false); }
   };
 
@@ -87,7 +128,7 @@ const ProviderDashboard = ({ user }) => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      const res = await axios.get('/api/ratings/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.get('/api/ratings/me', { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setRatingsReceived(res.data.ratings || []);
     } catch (err) {
       setInlineError('Could not load your ratings right now — please try again.');
@@ -97,11 +138,11 @@ const ProviderDashboard = ({ user }) => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.put(`/api/profile/${profile._id || profile.id}`, editForm, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.put(`/api/profile/${profile?._id || profile?.id}`, editForm, { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setProfile(res.data.user);
       setIsEditingProfile(false);
-      alert("Profile updated successfully!");
-    } catch (err) { setInlineError("Failed to update profile. Please try again."); }
+      showToast('Profile updated successfully! ✅');
+    } catch (err) { setInlineError('Failed to update profile. Please try again.'); }
   };
 
   const handlePostJob = async (e) => {
@@ -109,47 +150,69 @@ const ProviderDashboard = ({ user }) => {
     setInlineError(null);
     setSuccessMsg(null);
     try {
-      const res = await axios.post('/api/gigs', {
+      const res = await axios.post('/api/jobs', {
         title: formData.title,
         description: formData.description,
         category: formData.category,
         location: formData.location,
-        stipend: Number(formData.stipend),
+        price: Number(formData.stipend),
         payRate: formData.payRate,
-        mobileNumber: formData.mobileNumber,
-      }, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setSuccessMsg(`✅ "${res.data.gig.title}" posted successfully! It is now visible to all seekers.`);
+        urgency: formData.urgency || 'part-time',
+      }, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      setSuccessMsg(`✅ "${res.data.job?.title || formData.title}" posted successfully! It is now visible to all seekers.`);
       setFormData({ title: '', description: '', category: CATEGORIES[0], urgency: 'part-time', location: '', stipend: '', payRate: 'hour', mobileNumber: '' });
       fetchJobs(); // refresh provider's list
     } catch (err) {
-      console.error('[ProviderDashboard] handlePostJob error:', err.response?.status, err.response?.data);
-      setInlineError(err.response?.data?.message || err.message || 'Failed to post gig.');
+      console.error('[ProviderDashboard] handlePostJob error:', err?.response?.status, err?.response?.data);
+      setInlineError(err?.response?.data?.message || err.message || 'Failed to post job.');
     }
   };
 
-  const handleCompleteJob = async (jobId) => {
-    if (!window.confirm("Mark this gig as completed?")) return;
+  const handleAcceptApplicant = async (jobId, seekerId) => {
     try {
-      await axios.put(`/api/jobs/${jobId}/complete`, {}, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.put(`/api/jobs/${jobId}/accept`, { seekerId }, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const updatedJob = res.data.job;
+      showToast('Applicant accepted! Redirecting to payment… ✅');
+      // Navigate to payment page after brief delay for toast visibility
+      setTimeout(() => navigate(`/provider/payment/${jobId}`), 1200);
       fetchJobs();
-    } catch (err) { console.error(err); }
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to accept applicant.', 'error');
+    }
+  };
+
+  const handleCompleteJob = async (job) => {
+    if (!window.confirm('Mark this job as completed? This cannot be undone.')) return;
+    try {
+      const res = await axios.put(`/api/jobs/${job._id}/complete`, {}, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      showToast('✅ Job completed! Please leave a review for the seeker.');
+      fetchJobs();
+      // Prompt review for the seeker
+      const seeker = typeof job.selectedCandidate === 'object'
+        ? job.selectedCandidate
+        : { name: 'the seeker', _id: job.selectedCandidate };
+      setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: seeker?.name || 'the seeker' });
+    } catch (err) {
+      showToast(err?.response?.data?.message || 'Failed to mark complete.', 'error');
+    }
   };
 
   const handleRateSeeker = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('/api/ratings', { to: ratingModal.seekerId, job: ratingModal.jobId, score, comment, role: "seeker" }, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      alert("Rating submitted! ⭐");
+      await axios.post('/api/ratings', { to: ratingModal.seekerId, job: ratingModal.jobId, score, comment, role: 'seeker' }, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      showToast('Rating submitted! ⭐');
       setRatingModal({ show: false, jobId: null, seekerId: null, seekerName: '' });
       fetchJobs();
-    } catch (err) { setInlineError(err.response?.data?.message || "Error submitting rating"); }
+    } catch (err) { setInlineError(err?.response?.data?.message || 'Error submitting rating'); }
   };
 
   const TABS = [
     { id: 'profile', label: 'Profile', icon: <Building2 size={18} /> },
-    { id: 'gigs', label: 'Post Gigs', icon: <Plus size={18} /> },
+    { id: 'gigs', label: 'Post Jobs', icon: <Plus size={18} /> },
+    { id: 'applicants', label: 'Applicants', icon: <Users size={18} /> },
     { id: 'history', label: 'History', icon: <CheckCircle size={18} /> },
-    { id: 'hires', label: 'Seekers', icon: <Users size={18} /> },
+    { id: 'hires', label: 'Seekers', icon: <UserIcon size={18} /> },
     { id: 'ratings', label: 'Reviews', icon: <Star size={18} /> }
   ];
 
@@ -198,6 +261,33 @@ const ProviderDashboard = ({ user }) => {
 
   return (
     <div className="min-h-screen pb-12 transition-colors duration-300" style={{ backgroundColor: '#e8f5e9' }}>
+
+      {/* ── Toast Notification ── */}
+      {toast && (
+        <div
+          className={`fixed top-5 right-5 z-[9999] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl font-bold text-sm animate-in fade-in slide-in-from-top-4 duration-300 ${
+            toast.type === 'success' ? 'bg-green-700 text-white' : 'bg-red-600 text-white'
+          }`}
+          style={{ maxWidth: 380 }}
+        >
+          {toast.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          <span className="flex-1">{toast.msg}</span>
+          <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100"><X size={16} /></button>
+        </div>
+      )}
+
+      {/* ── Review Modal ── */}
+      {reviewModal && (
+        <ReviewModal
+          theme="green"
+          jobId={reviewModal.jobId}
+          jobTitle={reviewModal.jobTitle}
+          receiverName={reviewModal.receiverName}
+          onClose={() => setReviewModal(null)}
+          onSuccess={() => { setReviewModal(null); fetchJobs(); }}
+        />
+      )}
+
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -429,13 +519,13 @@ const ProviderDashboard = ({ user }) => {
                                  <button
                                    className="w-full py-2 bg-red-50 text-red-600 border border-red-200 font-black rounded-lg hover:bg-red-100 text-sm active:scale-95"
                                    onClick={async () => {
-                                     if (!window.confirm('Close this gig?')) return;
+                                     if (!window.confirm('Close this job?')) return;
                                      try {
-                                       await axios.patch(`/api/gigs/${gig._id}/close`, {}, { headers: { Authorization: `Bearer ${localStorage.getItem('token')}` }});
+                                       await axios.put(`/api/jobs/${gig._id}/complete`, {}, { headers: { Authorization: `Bearer ${getToken()}` } });
                                        fetchJobs();
                                      } catch(e) { console.error(e); }
                                    }}
-                                 >Close Gig</button>
+                                 >Close Job</button>
                               </div>
                            </div>
                          ))}
@@ -444,6 +534,130 @@ const ProviderDashboard = ({ user }) => {
                   </div>
                 )}
              </div>
+          )}
+
+          {/* APPLICANTS PER JOB TAB */}
+          {activeTab === 'applicants' && (
+            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 min-h-[400px]">
+               {renderInlineError()}
+               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3 mb-8"><Users className="text-[#2e7d32]" /> Applicants by Job</h2>
+               {tabLoading ? renderTabSkeletons() : jobs.length === 0 ? (
+                  <div className="py-12 flex flex-col items-center border border-dashed rounded-3xl bg-gray-50 text-gray-400">
+                    <Users size={40} className="mb-4 text-gray-300" />
+                    <p className="font-bold">No jobs posted yet. Post a job to see applicants.</p>
+                  </div>
+               ) : (
+                  <div className="space-y-4 animate-in fade-in duration-500">
+                    {jobs.map(job => {
+                      const isExpanded = expandedJobId === job._id;
+                      const applicantCount = job.applicants?.length || 0;
+                      return (
+                        <div key={job._id} className="border border-gray-200 rounded-3xl overflow-hidden">
+                          {/* Job header row */}
+                          <button
+                            className="w-full p-5 flex items-center justify-between bg-gray-50 hover:bg-green-50 transition-colors text-left"
+                            onClick={() => setExpandedJobId(isExpanded ? null : job._id)}
+                          >
+                            <div>
+                              <p className="font-black text-lg text-gray-900">{job.title}</p>
+                              <p className="text-sm text-gray-500 font-bold mt-1">
+                                <MapPin size={13} className="inline mr-1" />{job.location || 'N/A'}
+                                &nbsp;·&nbsp;
+                                <span className={`font-black ${job.isOpen ? 'text-green-600' : 'text-gray-400'}`}>{job.isOpen ? 'Open' : 'Closed'}</span>
+                                &nbsp;·&nbsp;
+                                <span className="text-[#2e7d32] font-black">{applicantCount} applicant{applicantCount !== 1 ? 's' : ''}</span>
+                              </p>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-xs font-black text-gray-400 uppercase tracking-wider">₹{job.price ?? job.payAmount} / {job.payRate}</span>
+                              {isExpanded ? <ChevronUp size={20} className="text-[#2e7d32]" /> : <ChevronDown size={20} className="text-gray-400" />}
+                            </div>
+                          </button>
+
+                          {/* Applicants list (accordion) */}
+                          {isExpanded && (
+                            <div className="p-5 border-t border-gray-100">
+                              {applicantCount === 0 ? (
+                                <p className="text-gray-400 italic text-center py-6">No applicants yet for this job.</p>
+                              ) : (
+                                <div className="space-y-3">
+                                  {job.applicants.map(app => {
+                                    const seeker = typeof app.seeker === 'object' ? app.seeker : { _id: app.seeker, name: 'Unknown', email: '' };
+                                    const statusColor = app.status === 'accepted' ? 'bg-green-100 text-green-700' : app.status === 'rejected' ? 'bg-red-100 text-red-600' : 'bg-yellow-100 text-yellow-700';
+                                    return (
+                                      <div key={app._id || seeker._id} className="flex items-center justify-between p-4 bg-gray-50 rounded-2xl border border-gray-100 hover:bg-white hover:shadow-sm transition-all">
+                                        <div className="flex items-center gap-3">
+                                          <div className="p-2 bg-[#e8f5e9] rounded-full text-[#2e7d32]"><UserIcon size={18} /></div>
+                                          <div>
+                                            <p className="font-black text-gray-900">{seeker?.name || 'Unknown'}</p>
+                                            <p className="text-xs text-gray-500 font-bold">{seeker?.email || 'No email'}</p>
+                                            <p className="text-xs text-gray-400 mt-0.5">Applied: {new Date(app.appliedAt || Date.now()).toLocaleDateString()}</p>
+                                          </div>
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <span className={`px-3 py-1 rounded-lg text-xs font-black uppercase tracking-wider ${statusColor}`}>
+                                            {app.status || 'pending'}
+                                          </span>
+                                          {app.status === 'pending' && job.isOpen && (
+                                            <button
+                                              onClick={() => handleAcceptApplicant(job._id, seeker._id)}
+                                              className="px-4 py-1.5 bg-[#2e7d32] text-white text-xs font-black rounded-lg hover:bg-[#1b5e20] active:scale-95 transition-all"
+                                            >
+                                              Accept
+                                            </button>
+                                          )}
+                                        </div>
+                                      </div>
+                                    );
+                                  })}
+                                </div>
+                              )}
+
+                              {/* Job-level actions based on status */}
+                              <div className="mt-4 pt-4 border-t border-gray-100 flex flex-wrap gap-3">
+                                {job.status === 'accepted' && (
+                                  <button
+                                    onClick={() => navigate(`/provider/payment/${job._id}`)}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-green-700 text-white font-black rounded-xl hover:bg-green-800 active:scale-95 transition-all text-sm shadow-md"
+                                  >
+                                    <CreditCard size={15} /> Pay Now to Start Job
+                                  </button>
+                                )}
+                                {job.status === 'in-progress' && (
+                                  <button
+                                    onClick={() => handleCompleteJob(job)}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-purple-600 text-white font-black rounded-xl hover:bg-purple-700 active:scale-95 transition-all text-sm shadow-md"
+                                  >
+                                    <CheckCircle size={15} /> Mark as Completed
+                                  </button>
+                                )}
+                                {job.status === 'completed' && !job.providerReviewed && (
+                                  <button
+                                    onClick={() => {
+                                      const seeker = typeof job.selectedCandidate === 'object'
+                                        ? job.selectedCandidate
+                                        : { name: 'the seeker', _id: job.selectedCandidate };
+                                      setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: seeker?.name || 'the seeker' });
+                                    }}
+                                    className="flex items-center gap-2 px-5 py-2.5 bg-yellow-500 text-white font-black rounded-xl hover:bg-yellow-600 active:scale-95 transition-all text-sm shadow-md"
+                                  >
+                                    <Star size={15} /> Leave a Review
+                                  </button>
+                                )}
+                                {job.status === 'completed' && job.providerReviewed && (
+                                  <span className="flex items-center gap-2 px-4 py-2 bg-gray-100 text-gray-500 font-bold rounded-xl text-sm">
+                                    <CheckCircle size={14} /> Review Submitted
+                                  </span>
+                                )}
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+               )}
+            </div>
           )}
 
           {/* COMPLETED WORKS */}
@@ -456,20 +670,26 @@ const ProviderDashboard = ({ user }) => {
                ) : (
                  <div className="space-y-4 animate-in fade-in duration-500">
                     {jobs.filter(j => j.status === 'completed').map(job => {
-                       const acceptedSeeker = job.applicants?.find(a => a.status === 'accepted');
+                       const selectedSeeker = typeof job.selectedCandidate === 'object'
+                         ? job.selectedCandidate
+                         : job.applicants?.find(a => a.status === 'accepted')?.seeker;
+                       const seekerName = typeof selectedSeeker === 'object' ? selectedSeeker?.name : 'Unknown';
                        return (
-                         <div key={job._id} className="p-6 bg-gray-50 border border-gray-100 flex flex-col md:flex-row justify-between items-center rounded-3xl hover:bg-white hover:shadow-md transition-all">
-                            <div className="mb-4 md:mb-0">
+                         <div key={job._id} className="p-6 bg-gray-50 border border-gray-100 flex flex-col md:flex-row justify-between items-start md:items-center rounded-3xl hover:bg-white hover:shadow-md transition-all gap-4">
+                            <div>
                                <h4 className="font-black text-lg text-gray-900">{job.title}</h4>
-                               <p className="text-sm font-bold text-gray-500 mb-2">Hired: {acceptedSeeker?.seeker?.name || 'Unknown'}</p>
-                               <span className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-black rounded-lg uppercase tracking-wider">Completed</span>
+                               <p className="text-sm font-bold text-gray-500 mb-2">Worker: {seekerName}</p>
+                               <div className="flex gap-2 flex-wrap">
+                                 <span className="px-3 py-1 bg-purple-100 text-purple-700 text-xs font-black rounded-lg uppercase tracking-wider">Completed</span>
+                                 {job.providerReviewed && <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-black rounded-lg uppercase tracking-wider">Reviewed ✓</span>}
+                               </div>
                             </div>
-                            {acceptedSeeker && (
-                               <button 
-                                 onClick={() => setRatingModal({ show: true, jobId: job._id, seekerId: typeof acceptedSeeker.seeker === 'object' ? acceptedSeeker.seeker._id : acceptedSeeker.seeker, seekerName: typeof acceptedSeeker.seeker === 'object' ? acceptedSeeker.seeker.name : 'Unknown' })}
-                                 className="px-6 py-3 bg-[#2e7d32] text-white font-black rounded-xl hover:bg-[#1b5e20] shadow-sm flex items-center gap-2 active:scale-95 transition-transform"
+                            {!job.providerReviewed && selectedSeeker && (
+                               <button
+                                 onClick={() => setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: seekerName })}
+                                 className="px-6 py-3 bg-yellow-500 text-white font-black rounded-xl hover:bg-yellow-600 shadow-sm flex items-center gap-2 active:scale-95 transition-transform shrink-0"
                                >
-                                 <Star size={16} fill="currentColor" /> Rate Worker
+                                 <Star size={16} fill="currentColor" /> Leave Review
                                </button>
                             )}
                          </div>

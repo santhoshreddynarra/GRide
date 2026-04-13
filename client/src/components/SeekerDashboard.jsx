@@ -1,26 +1,44 @@
-import React, { useState, useEffect } from 'react';
-import { Search, Briefcase, Star, MapPin, AlertCircle, Navigation, User as UserIcon, Settings, CheckCircle, Activity, Building2 } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Search, Briefcase, Star, MapPin, AlertCircle, Navigation, User as UserIcon, Settings, CheckCircle, Activity, Building2, X, Clock } from 'lucide-react';
 import axios from 'axios';
+import ReviewModal from './ReviewModal';
 
 const CATEGORIES = ["All Categories", "Electrician", "Plumber", "Carpenter", "Tutor", "Delivery helper", "Other skilled trades", "Other"];
 
-const SeekerDashboard = ({ user }) => {
+const getToken = () => localStorage.getItem('token') || localStorage.getItem('gigride_token') || '';
+const getCachedUser = () => {
+  try {
+    return JSON.parse(localStorage.getItem('user')) ||
+           JSON.parse(localStorage.getItem('gigride_user')) || null;
+  } catch { return null; }
+};
+
+const SeekerDashboard = ({ user: userProp }) => {
+  const user = userProp || getCachedUser() || {};
   const [activeTab, setActiveTab] = useState('profile');
 
   // Core Data States. Initialize Profile with localStorage `user` to prevent fatal crash if api fails!
   const [profile, setProfile] = useState(user);
   const [isEditingProfile, setIsEditingProfile] = useState(false);
-  const [editForm, setEditForm] = useState({ name: user.name, location: '', skills: [], isOnline: false });
+  const [editForm, setEditForm] = useState({ name: user?.name || '', location: '', skills: [], isOnline: false });
 
   const [activityFeed, setActivityFeed] = useState([]);
   const [ratingsReceived, setRatingsReceived] = useState([]);
   const [jobs, setJobs] = useState([]);
   const [myJobs, setMyJobs] = useState([]);
-  
+  // Track which job IDs the seeker has applied to (for instant button update)
+  const [appliedJobIds, setAppliedJobIds] = useState(new Set());
+  const [applyingId, setApplyingId] = useState(null);
+
   const [loading, setLoading] = useState(true);
   const [tabLoading, setTabLoading] = useState(false);
   const [inlineError, setInlineError] = useState(null);
-  
+  // Toast notifications
+  const [toast, setToast] = useState(null); // { msg, type: 'success'|'error' }
+  const toastTimer = useRef(null);
+  // Review modal
+  const [reviewModal, setReviewModal] = useState(null); // { jobId, jobTitle, receiverName }
+
   // Rating logic
   const [ratingModal, setRatingModal] = useState({ show: false, jobId: null, providerId: null, providerName: '' });
   const [score, setScore] = useState(5);
@@ -29,6 +47,12 @@ const SeekerDashboard = ({ user }) => {
   const [filterType, setFilterType] = useState('all');
   const [filterCategory, setFilterCategory] = useState('All Categories');
   const [filterLocation, setFilterLocation] = useState('');
+
+  const showToast = (msg, type = 'success') => {
+    setToast({ msg, type });
+    clearTimeout(toastTimer.current);
+    toastTimer.current = setTimeout(() => setToast(null), 3500);
+  };
 
   useEffect(() => {
     fetchInitialData();
@@ -52,30 +76,45 @@ const SeekerDashboard = ({ user }) => {
   };
 
   const fetchProfile = async () => {
+    const uid = user?.id || user?._id;
+    if (!uid) {
+      // No user id — try /api/auth/me fallback
+      try {
+        const res = await axios.get('/api/auth/me', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+        const freshUser = res.data?.user;
+        if (freshUser) {
+          setProfile(freshUser);
+          setEditForm({ name: freshUser.name || '', location: freshUser.location || '', skills: freshUser.skills || [], isOnline: freshUser.isOnline || false });
+        }
+      } catch { /* silent */ }
+      return;
+    }
     try {
-      const res = await axios.get(`/api/profile/${user.id || user._id}`, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setProfile(res.data.user);
-      setEditForm({
-        name: res.data.user.name,
-        location: res.data.user.location || '',
-        skills: res.data.user.skills || [],
-        isOnline: res.data.user.isOnline || false,
-      });
-    } catch (err) { 
-      console.error(err); 
-      if (err.response?.status === 401) {
-         localStorage.clear();
-         window.location.href = '/login';
+      const res = await axios.get(`/api/profile/${uid}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const freshUser = res.data?.user;
+      if (freshUser) {
+        setProfile(freshUser);
+        setEditForm({ name: freshUser.name || '', location: freshUser.location || '', skills: freshUser.skills || [], isOnline: freshUser.isOnline || false });
       }
-      setInlineError('Could not load your complete profile right now — please try again.');
+    } catch (err) {
+      console.error('[SeekerDashboard] fetchProfile error:', err?.response?.status, err?.response?.data);
+      if (err?.response?.status === 401) {
+        localStorage.clear();
+        window.location.href = '/login';
+        return;
+      }
+      // Graceful fallback — keep cached profile, just show warning
+      const cached = getCachedUser();
+      if (cached && !profile?.name) setProfile(cached);
+      setInlineError('Could not refresh profile — showing cached data.');
     }
   };
 
   const fetchActivity = async () => {
     try {
-      const res = await axios.get('/api/profile/activity', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.get('/api/profile/activity', { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setActivityFeed(res.data.activity || []);
-    } catch (err) { console.error(err); }
+    } catch (err) { console.error('[SeekerDashboard] fetchActivity:', err?.message); }
   };
 
   const fetchExploreJobs = async () => {
@@ -87,16 +126,30 @@ const SeekerDashboard = ({ user }) => {
       if (filterCategory !== 'All Categories') params.append('category', filterCategory);
       if (filterLocation) params.append('location', filterLocation);
 
-      const res = await axios.get(`/api/gigs?${params.toString()}`, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
-      });
-      // Backend returns { gigs: [...] }
-      setJobs(res.data.gigs || []);
+      // Try /api/jobs first (primary); fallback to /api/gigs
+      let jobList = [];
+      try {
+        const res = await axios.get(`/api/jobs?${params.toString()}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+        jobList = res.data.jobs || [];
+      } catch {
+        const res = await axios.get(`/api/gigs?${params.toString()}`, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+        jobList = res.data.gigs || [];
+      }
+      setJobs(jobList);
+
+      // Determine which jobs the current seeker has already applied to
+      const uid = user?.id || user?._id;
+      if (uid) {
+        const appliedIds = new Set(
+          jobList
+            .filter(j => j.applicants?.some(a => (a.seeker?._id || a.seeker) === uid || (a.seeker?._id || a.seeker)?.toString() === uid?.toString()))
+            .map(j => j._id)
+        );
+        setAppliedJobIds(prev => new Set([...prev, ...appliedIds]));
+      }
     } catch (err) {
-      console.error('[SeekerDashboard] fetchExploreJobs error:', err.response?.status, err.response?.data);
-      setInlineError(
-        err.response?.data?.message || 'Could not load gigs right now — please try again.'
-      );
+      console.error('[SeekerDashboard] fetchExploreJobs error:', err?.response?.status, err?.response?.data);
+      setInlineError(err?.response?.data?.message || 'Could not load jobs right now — please try again.');
     } finally { setTabLoading(false); }
   };
 
@@ -104,10 +157,14 @@ const SeekerDashboard = ({ user }) => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      const res = await axios.get('/api/jobs/applied', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      setMyJobs(res.data.jobs || []);
+      const res = await axios.get('/api/jobs/applied', { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      const applied = res.data.jobs || [];
+      setMyJobs(applied);
+      // Mark these jobs as applied in state
+      setAppliedJobIds(prev => new Set([...prev, ...applied.map(j => j._id)]));
     } catch (err) {
-      setInlineError('Could not load your history right now — please try again.');
+      console.error('[SeekerDashboard] fetchMyJobs:', err?.response?.data);
+      setInlineError('Could not load your applications right now — please try again.');
     } finally { setTabLoading(false); }
   };
 
@@ -115,7 +172,7 @@ const SeekerDashboard = ({ user }) => {
     setTabLoading(true);
     setInlineError(null);
     try {
-      const res = await axios.get('/api/ratings/me', { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.get('/api/ratings/me', { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setRatingsReceived(res.data.ratings || []);
     } catch (err) {
       setInlineError('Could not load your ratings right now — please try again.');
@@ -125,11 +182,11 @@ const SeekerDashboard = ({ user }) => {
   const handleUpdateProfile = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.put(`/api/profile/${profile._id || profile.id}`, editForm, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
+      const res = await axios.put(`/api/profile/${profile?._id || profile?.id}`, editForm, { headers: { 'Authorization': `Bearer ${getToken()}` } });
       setProfile(res.data.user);
       setIsEditingProfile(false);
-      alert("Profile updated successfully!");
-    } catch (err) { setInlineError("Failed to update profile. Please try again."); }
+      showToast('Profile updated successfully! ✅');
+    } catch (err) { setInlineError('Failed to update profile. Please try again.'); }
   };
 
   const handleSkillToggle = (skill) => {
@@ -139,27 +196,38 @@ const SeekerDashboard = ({ user }) => {
     }));
   };
 
-  const handleApply = async (gigId) => {
+  const handleApply = async (jobId) => {
+    if (appliedJobIds.has(jobId) || applyingId === jobId) return;
+    setApplyingId(jobId);
     try {
-      await axios.post(`/api/gigs/${gigId}/apply`, {}, {
-        headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }
+      await axios.post(`/api/jobs/${jobId}/apply`, {}, {
+        headers: { 'Authorization': `Bearer ${getToken()}` }
       });
-      alert("✅ Application sent! The provider will review your request.");
-      fetchExploreJobs();
+      // Optimistically mark as applied immediately
+      setAppliedJobIds(prev => new Set([...prev, jobId]));
+      showToast('Applied successfully! ✅ The provider will review your request.');
     } catch (err) {
-      console.error('[SeekerDashboard] handleApply error:', err.response?.status, err.response?.data);
-      setInlineError(err.response?.data?.message || 'Failed to apply — please try again.');
+      console.error('[SeekerDashboard] handleApply error:', err?.response?.status, err?.response?.data);
+      const msg = err?.response?.data?.message || 'Failed to apply — please try again.';
+      if (msg.toLowerCase().includes('already applied')) {
+        setAppliedJobIds(prev => new Set([...prev, jobId])); // sync state
+        showToast('You have already applied to this job.', 'error');
+      } else {
+        showToast(msg, 'error');
+      }
+    } finally {
+      setApplyingId(null);
     }
   };
 
   const handleRateProvider = async (e) => {
     e.preventDefault();
     try {
-      await axios.post('/api/ratings', { to: ratingModal.providerId, job: ratingModal.jobId, score, comment, role: "provider" }, { headers: { 'Authorization': `Bearer ${localStorage.getItem('token')}` }});
-      alert("Rating submitted! ⭐");
+      await axios.post('/api/ratings', { to: ratingModal.providerId, job: ratingModal.jobId, score, comment, role: 'provider' }, { headers: { 'Authorization': `Bearer ${getToken()}` } });
+      showToast('Rating submitted! ⭐');
       setRatingModal({ show: false, jobId: null, providerId: null, providerName: '' });
       fetchMyJobs();
-    } catch (err) { setInlineError(err.response?.data?.message || "Error submitting rating"); }
+    } catch (err) { setInlineError(err?.response?.data?.message || 'Error submitting rating'); }
   };
 
   const TABS = [
@@ -217,6 +285,33 @@ const SeekerDashboard = ({ user }) => {
 
   return (
     <div className="min-h-screen pb-12 transition-colors duration-300" style={{ backgroundColor: '#e0f7fa' }}>
+
+      {/* ── Toast Notification ── */}
+      {toast && (
+        <div
+          className={`fixed top-5 right-5 z-[9999] flex items-center gap-3 px-5 py-4 rounded-2xl shadow-2xl font-bold text-sm animate-in fade-in slide-in-from-top-4 duration-300 ${
+            toast.type === 'success' ? 'bg-green-600 text-white' : 'bg-red-600 text-white'
+          }`}
+          style={{ maxWidth: 360 }}
+        >
+          {toast.type === 'success' ? <CheckCircle size={18} /> : <AlertCircle size={18} />}
+          <span className="flex-1">{toast.msg}</span>
+          <button onClick={() => setToast(null)} className="ml-2 opacity-70 hover:opacity-100"><X size={16} /></button>
+        </div>
+      )}
+
+      {/* ── Review Modal (blue theme for seeker) ── */}
+      {reviewModal && (
+        <ReviewModal
+          theme="blue"
+          jobId={reviewModal.jobId}
+          jobTitle={reviewModal.jobTitle}
+          receiverName={reviewModal.receiverName}
+          onClose={() => setReviewModal(null)}
+          onSuccess={() => { setReviewModal(null); fetchMyJobs(); }}
+        />
+      )}
+
       <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
         <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2">
@@ -403,12 +498,22 @@ const SeekerDashboard = ({ user }) => {
                            </div>
                          </div>
                          <div className="p-4 border-t border-gray-100 bg-white">
-                           <button 
-                              onClick={() => handleApply(gig._id)}
-                              className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 text-white shadow-md bg-[#0277bd] hover:bg-[#01579b]"
-                            >
-                             Apply Now
-                           </button>
+                           {appliedJobIds.has(gig._id) ? (
+                             <button
+                               disabled
+                               className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 bg-green-100 text-green-700 border border-green-200 cursor-not-allowed"
+                             >
+                               <CheckCircle size={16} /> Applied ✓
+                             </button>
+                           ) : (
+                             <button
+                               onClick={() => handleApply(gig._id)}
+                               disabled={applyingId === gig._id}
+                               className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 text-white shadow-md bg-[#0277bd] hover:bg-[#01579b] disabled:opacity-60 disabled:cursor-not-allowed"
+                             >
+                               {applyingId === gig._id ? 'Applying…' : 'Apply Now'}
+                             </button>
+                           )}
                          </div>
                       </div>
                     ))}
@@ -434,38 +539,48 @@ const SeekerDashboard = ({ user }) => {
                ) : (
                  <div className="space-y-4 animate-in fade-in duration-500">
                     {myJobs.map(job => {
-                      const appInfo = job.applicants.find(a => a.seeker === user.id || a.seeker._id === user.id);
+                      const appInfo = job.applicants?.find(a => {
+                        const sid = typeof a.seeker === 'object' ? a.seeker?._id : a.seeker;
+                        return sid?.toString() === (user?.id || user?._id)?.toString();
+                      });
                       const isCompleted = job.status === 'completed';
+                      const isInProgress = job.status === 'in-progress';
+                      const isAccepted = job.status === 'accepted' || appInfo?.status === 'accepted';
                       const isRejected = appInfo?.status === 'rejected';
                       if (activeTab === 'applications' && isCompleted) return null;
                       if (activeTab === 'history' && !isCompleted) return null;
 
+                      const providerName = typeof job.createdBy === 'object' ? job.createdBy?.name : 'Unknown';
+
                       return (
-                        <div key={job._id} className="flex flex-col md:flex-row justify-between items-center p-6 bg-gray-50 border border-gray-100 rounded-3xl hover:bg-white hover:shadow-md transition-all group">
-                          <div className="w-full md:w-auto mb-4 md:mb-0">
+                        <div key={job._id} className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 bg-gray-50 border border-gray-100 rounded-3xl hover:bg-white hover:shadow-md transition-all group gap-4">
+                          <div className="w-full md:w-auto">
                             <h3 className="font-black text-lg text-gray-900 group-hover:text-[#0277bd] transition-colors">{job.title}</h3>
-                            <p className="text-sm font-bold text-gray-500 mb-3">Provider: {job.createdBy?.name || 'Unknown'}</p>
-                            <div className="flex gap-2">
+                            <p className="text-sm font-bold text-gray-500 mb-3">Provider: {providerName}</p>
+                            <div className="flex gap-2 flex-wrap">
                                <span className="px-3 py-1 bg-white border border-gray-200 text-xs font-black text-gray-700 rounded-lg">{job.category}</span>
                                <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-black rounded-lg">₹{job.payAmount || job.price} / {job.payRate}</span>
+                               <span className={`px-3 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
+                                 isCompleted ? 'bg-purple-100 text-purple-700' :
+                                 isInProgress ? 'bg-blue-100 text-[#0277bd]' :
+                                 isAccepted ? 'bg-cyan-100 text-cyan-700' :
+                                 isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
+                               }`}>
+                                 {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : isAccepted ? 'Accepted' : isRejected ? 'Rejected' : 'Pending'}
+                               </span>
+                               {isCompleted && job.seekerReviewed && (
+                                 <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-black rounded-lg">Reviewed ✓</span>
+                               )}
                             </div>
                           </div>
                           
-                          <div className="flex flex-col sm:flex-row items-center gap-4 w-full md:w-auto">
-                            <span className={`px-4 py-2 font-black text-xs uppercase tracking-widest rounded-xl ${
-                                isCompleted ? 'bg-purple-100 text-purple-700' :
-                                appInfo?.status === 'accepted' ? 'bg-cyan-100 text-[#0277bd]' :
-                                isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                            }`}>
-                               {isCompleted ? 'Finished Job' : appInfo?.status || 'Pending'}
-                            </span>
-                            
-                            {isCompleted && appInfo?.status === 'accepted' && (
+                          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
+                            {isCompleted && !job.seekerReviewed && (
                               <button 
-                                onClick={() => setRatingModal({ show: true, jobId: job._id, providerId: typeof job.createdBy === 'object' ? job.createdBy._id : job.createdBy, providerName: typeof job.createdBy === 'object' ? job.createdBy.name : 'Unknown' })}
-                                className="px-6 py-2 bg-[#0277bd] text-white font-black rounded-xl hover:bg-[#01579b] shadow-md transition-transform active:scale-95 flex items-center gap-2"
+                                onClick={() => setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: providerName })}
+                                className="px-6 py-2.5 bg-[#0277bd] text-white font-black rounded-xl hover:bg-[#01579b] shadow-md transition-transform active:scale-95 flex items-center gap-2 text-sm"
                               >
-                                <Star size={16} fill="currentColor" /> Rate Provider
+                                <Star size={15} fill="currentColor" /> Leave Review
                               </button>
                             )}
                           </div>

@@ -51,6 +51,7 @@ const register = async (req, res) => {
       message: "User registered successfully",
       token,
       user: {
+        _id: user._id,
         id: user._id,
         name: user.name,
         email: user.email,
@@ -104,10 +105,17 @@ const login = async (req, res) => {
       message: "Login successful",
       token,
       user: {
+        _id: user._id,
         id: user._id,
         name: user.name,
         email: user.email,
         role: user.role,
+        skills: user.skills || [],
+        companyName: user.companyName || "",
+        location: user.location || "",
+        isOnline: user.isOnline || false,
+        ratings: user.ratings || { average: 0, count: 0 },
+        createdAt: user.createdAt,
       },
     });
 
@@ -127,10 +135,17 @@ const getMe = async (req, res) => {
   try {
     res.status(200).json({
       user: {
+        _id: req.user._id,
         id: req.user._id,
         name: req.user.name,
         email: req.user.email,
         role: req.user.role,
+        skills: req.user.skills || [],
+        companyName: req.user.companyName || "",
+        location: req.user.location || "",
+        isOnline: req.user.isOnline || false,
+        ratings: req.user.ratings || { average: 0, count: 0 },
+        createdAt: req.user.createdAt,
       },
     });
   } catch (error) {

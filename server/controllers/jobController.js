@@ -78,6 +78,7 @@ const getMyJobs = async (req, res) => {
   try {
     const jobs = await Job.find({ createdBy: req.user._id })
       .populate("applicants.seeker", "name email skills ratings")
+      .populate("selectedCandidate", "name email skills ratings")
       .sort({ createdAt: -1 });
     res.status(200).json({ jobs: jobs.map((j) => j.toJSON()) });
   } catch (error) {
@@ -151,16 +152,38 @@ const acceptApplicant = async (req, res) => {
       return res.status(403).json({ message: "Not authorized" });
     }
 
+    if (!job.isOpen) {
+      return res.status(400).json({ message: "Job is already closed" });
+    }
+
     const seekerId = req.params.seekerId || req.body.seekerId;
+    if (!seekerId) return res.status(400).json({ message: "seekerId is required" });
+
     const applicant = job.applicants.find((a) => a.seeker.toString() === seekerId);
     if (!applicant) return res.status(404).json({ message: "Applicant not found" });
 
-    applicant.status = "accepted";
-    job.isOpen = false;
-    job.status = "filled";
+    // Accept this applicant, reject all others
+    job.applicants.forEach((a) => {
+      if (a.seeker.toString() === seekerId) a.status = "accepted";
+      else a.status = "rejected";
+    });
+
+    // Set selected candidate and advance status
+    job.selectedCandidate = seekerId;
+    job.status = "accepted";
+    // Keep isOpen true until payment is made
 
     await job.save();
-    res.status(200).json({ message: "Applicant accepted and job closed", job: job.toJSON() });
+
+    // Re-populate for response
+    const updated = await Job.findById(job._id)
+      .populate("selectedCandidate", "name email")
+      .populate("applicants.seeker", "name email");
+
+    return res.status(200).json({
+      message: "Applicant accepted. Proceed to payment.",
+      job: updated.toJSON(),
+    });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -210,17 +233,41 @@ const getJobApplications = async (req, res) => {
 // @route   PUT /api/jobs/:id/complete
 const completeJob = async (req, res) => {
   try {
-    const job = await Job.findById(req.params.id);
+    const job = await Job.findById(req.params.id).populate("selectedCandidate", "name email");
     if (!job) return res.status(404).json({ message: "Job not found" });
 
     if (job.createdBy.toString() !== req.user._id.toString()) {
       return res.status(403).json({ message: "Not authorized" });
     }
 
+    if (job.status !== "in-progress") {
+      return res.status(400).json({ message: "Job must be in-progress before completing" });
+    }
+
     job.status = "completed";
+    job.isOpen = false;
     await job.save();
 
-    res.status(200).json({ message: "Job marked as completed. Please rate your partner!", job: job.toJSON() });
+    res.status(200).json({
+      message: "Job marked as completed! Please review your partner.",
+      job: job.toJSON(),
+    });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+// @route   GET /api/jobs/:id
+// @desc    Get single job with full details
+// @access  Protected
+const getJobById = async (req, res) => {
+  try {
+    const job = await Job.findById(req.params.id)
+      .populate("createdBy", "name email companyName ratings")
+      .populate("applicants.seeker", "name email skills ratings")
+      .populate("selectedCandidate", "name email skills ratings");
+    if (!job) return res.status(404).json({ message: "Job not found" });
+    res.status(200).json({ job: job.toJSON() });
   } catch (error) {
     res.status(500).json({ message: "Server error", error: error.message });
   }
@@ -230,6 +277,7 @@ module.exports = {
   createJob,
   getJobs,
   getMyJobs,
+  getJobById,
   applyToJob,
   claimJob,
   acceptApplicant,

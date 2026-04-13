@@ -37,10 +37,14 @@ export default function ProfilePage() {
 
   // ── 1. Read from localStorage safely ──────────────────────────────────────
   const [user, setUser]       = useState(() => {
-    try { return JSON.parse(localStorage.getItem("user")) || null; }
+    try {
+      return JSON.parse(localStorage.getItem("user") || localStorage.getItem("gigride_user")) || null;
+    }
     catch { return null; }
   });
-  const [token]               = useState(() => localStorage.getItem("token") || null);
+  const [token]               = useState(() =>
+    localStorage.getItem("token") || localStorage.getItem("gigride_token") || null
+  );
 
   // ── 2. Component state ────────────────────────────────────────────────────
   const [loading, setLoading]       = useState(true);
@@ -167,9 +171,9 @@ export default function ProfilePage() {
   };
 
   const handleLogout = () => {
-    localStorage.removeItem("token");
-    localStorage.removeItem("user");
-    localStorage.removeItem("role");
+    ["token", "user", "role", "gigride_token", "gigride_user", "gigride_role"].forEach(k =>
+      localStorage.removeItem(k)
+    );
     navigate("/login");
   };
 

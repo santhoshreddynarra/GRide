@@ -25,6 +25,8 @@ app.use("/api/profile", require("./routes/profileRoutes"));
 app.use("/api/gigs", require("./routes/gigRoutes"));
 app.use("/api/jobs", require("./routes/jobRoutes"));
 app.use("/api/ratings", require("./routes/ratingRoutes"));
+app.use("/api/payments", require("./routes/paymentRoutes"));
+app.use("/api/reviews", require("./routes/reviewRoutes"));
 
 // Test route
 app.get("/", (req, res) => {
