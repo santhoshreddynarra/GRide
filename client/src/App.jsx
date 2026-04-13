@@ -4,6 +4,7 @@ import Login from "./pages/Login";
 import Register from "./pages/Register";
 import ProviderDashboard from "./components/ProviderDashboard";
 import SeekerDashboard from "./components/SeekerDashboard";
+import ProfilePage from "./components/ProfilePage";
 
 // Simple protected route wrapper
 const ProtectedRoute = ({ children, requiredRole }) => {
@@ -57,6 +58,16 @@ export default function App() {
         />
         {/* backward-compat alias */}
         <Route path="/seeker-dashboard" element={<Navigate to="/seeker/dashboard" replace />} />
+
+        {/* Profile — accessible to any logged-in user */}
+        <Route
+          path="/profile"
+          element={
+            <ProtectedRoute>
+              <ProfilePage />
+            </ProtectedRoute>
+          }
+        />
       </Routes>
     </BrowserRouter>
   );
