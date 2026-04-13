@@ -23,14 +23,13 @@ const protect = async (req, res, next) => {
       // Attach user to request (exclude password)
       req.user = await User.findById(decoded.id).select("-password");
 
-      next();
+      return next(); // ✅ return prevents fall-through to the else block
     } catch (error) {
-      res.status(401).json({ message: "Not authorized, token failed" });
+      return res.status(401).json({ message: "Not authorized, token failed" });
     }
-  }
-
-  if (!token) {
-    res.status(401).json({ message: "Not authorized, no token" });
+  } else {
+    // ✅ else ensures this only runs when no Bearer header was present
+    return res.status(401).json({ message: "Not authorized, no token" });
   }
 };
 

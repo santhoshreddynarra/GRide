@@ -13,7 +13,7 @@ export default function Register() {
   const [success, setSuccess] = useState(false);
   const [error, setError] = useState("");
   const [shake, setShake] = useState(false);
-  
+
   const navigate = useNavigate();
 
   const handleSubmit = async (e) => {
@@ -23,14 +23,14 @@ export default function Register() {
 
     try {
       const res = await axios.post("/api/auth/register", { name, email, password, role });
-      
+
       const { token, user } = res.data;
       localStorage.setItem("token", token);
       localStorage.setItem("user", JSON.stringify(user));
       localStorage.setItem("role", user.role);
 
       setSuccess(true);
-      
+
       setTimeout(() => {
         if (user.role === "provider") {
           navigate("/provider/dashboard");
@@ -109,11 +109,10 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={() => setRole("seeker")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${
-                      role === "seeker"
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${role === "seeker"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                      }`}
                   >
                     <Briefcase className="w-4 h-4" />
                     Job Seeker
@@ -121,11 +120,10 @@ export default function Register() {
                   <button
                     type="button"
                     onClick={() => setRole("provider")}
-                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${
-                      role === "provider"
-                        ? "bg-white text-gray-900 shadow-sm"
-                        : "text-gray-600 hover:text-gray-900"
-                    }`}
+                    className={`flex-1 flex items-center justify-center gap-2 py-3 px-4 rounded-xl font-medium transition-all duration-300 ${role === "provider"
+                      ? "bg-white text-gray-900 shadow-sm"
+                      : "text-gray-600 hover:text-gray-900"
+                      }`}
                   >
                     <Building2 className="w-4 h-4" />
                     Employer
@@ -217,9 +215,8 @@ export default function Register() {
                 <button
                   type="submit"
                   disabled={loading}
-                  className={`w-full py-4 bg-black text-white font-medium rounded-xl hover:bg-gray-800 transition-all duration-300 flex items-center justify-center gap-2 glow-effect ${
-                    shake ? "animate-shake bg-red-600 hover:bg-red-700" : ""
-                  }`}
+                  className={`w-full py-4 bg-black text-white font-medium rounded-xl hover:bg-gray-800 transition-all duration-300 flex items-center justify-center gap-2 glow-effect ${shake ? "animate-shake bg-red-600 hover:bg-red-700" : ""
+                    }`}
                 >
                   {loading ? (
                     <>
