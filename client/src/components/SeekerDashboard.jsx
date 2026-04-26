@@ -1,7 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Search, Briefcase, Star, MapPin, AlertCircle, Navigation, User as UserIcon, Settings, CheckCircle, Activity, Building2, X, Clock } from 'lucide-react';
+import { useNavigate } from 'react-router-dom';
+import { Search, Briefcase, Star, MapPin, AlertCircle, User as UserIcon, Settings, CheckCircle, Activity, Building2, X, Clock } from 'lucide-react';
 import axios from 'axios';
 import ReviewModal from './ReviewModal';
+import AppNavbar from './AppNavbar';
+import ChatBox from './ChatBox';
 
 const CATEGORIES = ["All Categories", "Electrician", "Plumber", "Carpenter", "Tutor", "Delivery helper", "Other skilled trades", "Other"];
 
@@ -15,7 +18,8 @@ const getCachedUser = () => {
 
 const SeekerDashboard = ({ user: userProp }) => {
   const user = userProp || getCachedUser() || {};
-  const [activeTab, setActiveTab] = useState('profile');
+  const navigate = useNavigate();
+  const [activeTab, setActiveTab] = useState('find');
 
   // Core Data States. Initialize Profile with localStorage `user` to prevent fatal crash if api fails!
   const [profile, setProfile] = useState(user);
@@ -38,6 +42,7 @@ const SeekerDashboard = ({ user: userProp }) => {
   const toastTimer = useRef(null);
   // Review modal
   const [reviewModal, setReviewModal] = useState(null); // { jobId, jobTitle, receiverName }
+  const [chatJob, setChatJob]         = useState(null); // { id, title, receiverId }
 
   // Rating logic
   const [ratingModal, setRatingModal] = useState({ show: false, jobId: null, providerId: null, providerName: '' });
@@ -59,14 +64,9 @@ const SeekerDashboard = ({ user: userProp }) => {
   }, []);
 
   useEffect(() => {
-    setInlineError(null); // Clear errors when switching tabs
+    setInlineError(null);
     if (activeTab === 'find') fetchExploreJobs();
-    if (activeTab === 'applications' || activeTab === 'history' || activeTab === 'employers') fetchMyJobs();
-    if (activeTab === 'ratings') fetchMyRatings();
-    if (activeTab === 'profile') {
-      fetchProfile();
-      fetchActivity();
-    }
+    if (activeTab === 'applications') fetchMyJobs();
   }, [activeTab, filterType, filterCategory, filterLocation]);
 
   const fetchInitialData = async () => {
@@ -231,12 +231,8 @@ const SeekerDashboard = ({ user: userProp }) => {
   };
 
   const TABS = [
-    { id: 'profile', label: 'Profile', icon: <UserIcon size={18} /> },
-    { id: 'find', label: 'Find Gigs', icon: <Search size={18} /> },
-    { id: 'applications', label: 'Applications', icon: <Briefcase size={18} /> },
-    { id: 'history', label: 'History', icon: <CheckCircle size={18} /> },
-    { id: 'employers', label: 'Employers', icon: <Building2 size={18} /> },
-    { id: 'ratings', label: 'Reviews', icon: <Star size={18} /> }
+    { id: 'find',         label: 'Browse Jobs',     icon: <Search size={17} /> },
+    { id: 'applications', label: 'My Applications', icon: <Briefcase size={17} /> },
   ];
 
   /* GIG UI RENDER HELPERS */
@@ -312,340 +308,225 @@ const SeekerDashboard = ({ user: userProp }) => {
         />
       )}
 
-      <nav className="bg-white shadow-sm border-b border-gray-200 sticky top-0 z-40">
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 h-16 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Navigation className="w-6 h-6 text-[#0277bd]" />
-            <span className="font-bold text-xl text-[#0277bd]">SeekerDash</span>
+      <AppNavbar role="seeker" user={profile} />
+
+      <div className="max-w-6xl mx-auto mt-8 px-4 sm:px-6 lg:px-8">
+
+        {/* ── Compact Profile Strip ── */}
+        <div className="bg-white rounded-2xl p-5 mb-6 shadow-md border border-gray-100 flex items-center gap-4 flex-wrap">
+          <div
+            className="w-14 h-14 rounded-full flex items-center justify-center text-white text-xl font-black flex-shrink-0"
+            style={{ background: 'linear-gradient(135deg,#0277bd,#01579b)' }}
+          >
+            {(profile.name || '?').charAt(0).toUpperCase()}
           </div>
-          <div className="flex items-center gap-4">
-            <span className="font-bold text-gray-800 hidden sm:block text-lg">Welcome back, {profile.name}!</span>
-            <button 
-              onClick={() => { localStorage.clear(); window.location.href = '/login'; }}
-              className="text-sm font-bold text-white px-4 py-2 rounded-lg bg-[#0277bd] hover:bg-[#01579b] transition-colors relative overflow-hidden group shadow-md"
-            >
-              <span className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform"></span>
-              <span className="relative">Logout</span>
-            </button>
+          <div className="flex-1 min-w-0">
+            <h1 className="text-2xl font-bold text-gray-900 truncate">{profile.name || 'Loading…'}</h1>
+            <div className="flex items-center gap-3 text-sm text-gray-500 mt-1 flex-wrap">
+              {profile.email && <span>{profile.email}</span>}
+              {profile.ratings?.count > 0 && (
+                <span className="flex items-center gap-1 text-yellow-600 font-semibold">
+                  <Star size={13} fill="currentColor" />
+                  {profile.ratings.average?.toFixed(1)} ({profile.ratings.count} reviews)
+                </span>
+              )}
+              <span className={`font-semibold ${profile.isOnline ? 'text-green-600' : 'text-gray-400'}`}>
+                {profile.isOnline ? '● Online' : '○ Offline'}
+              </span>
+              {profile.skills?.length > 0 && (
+                <span className="text-gray-400">· {profile.skills.slice(0,3).join(', ')}</span>
+              )}
+            </div>
           </div>
         </div>
-      </nav>
 
-      <div className="max-w-7xl mx-auto mt-8 px-4 sm:px-6 lg:px-8">
-        
-        {/* Horizontal Scrollable Tabs */}
-        <div className="flex overflow-x-auto gap-2 pb-4 mb-6 hide-scrollbar border-b border-[#b2ebf2]">
+        {/* ── Tab Bar ── */}
+        <div className="flex gap-2 mb-6 border-b border-gray-200">
           {TABS.map(tab => (
-            <button 
+            <button
               key={tab.id}
-              className={`flex items-center gap-2 px-6 py-3 rounded-t-xl font-bold transition-all whitespace-nowrap active:scale-95 ${activeTab === tab.id ? 'bg-[#0277bd] text-white shadow-lg' : 'bg-white/50 text-[#0277bd] hover:bg-white'}`}
               onClick={() => setActiveTab(tab.id)}
+              className={`flex items-center gap-2 px-5 py-3 text-base font-semibold rounded-t-xl transition-all whitespace-nowrap ${
+                activeTab === tab.id
+                  ? 'bg-[#0277bd] text-white shadow-md'
+                  : 'text-gray-500 hover:text-[#0277bd] hover:bg-[#e0f7fa]'
+              }`}
             >
               {tab.icon} {tab.label}
             </button>
           ))}
         </div>
 
-        {/* Tab Content Wrapper */}
-        <div className="animate-in fade-in slide-in-from-bottom-4 duration-500">
-          
-          {/* PROFILE & ACTIVITY TAB */}
-          {activeTab === 'profile' && (
-            <div className="grid grid-cols-1 lg:grid-cols-3 gap-8">
-              <div className="lg:col-span-2 space-y-6">
-                <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100">
-                  {renderInlineError()}
-                  <div className="flex justify-between items-start mb-6">
-                    <div className="flex items-center gap-4">
-                      <div className="bg-[#e0f7fa] p-4 rounded-full text-[#0277bd]"><UserIcon size={40} /></div>
-                      <div>
-                        <h2 className="text-3xl font-bold text-gray-900">{profile.name}</h2>
-                        <div className="flex gap-2 text-sm text-gray-500 mt-1">
-                          <MapPin size={16} /> {profile.location || 'No location set'}
-                        </div>
-                      </div>
-                    </div>
-                    <button onClick={() => setIsEditingProfile(!isEditingProfile)} className="p-2 text-gray-400 hover:text-[#0277bd] bg-gray-50 rounded-xl hover:bg-[#e0f7fa] transition-colors"><Settings /></button>
-                  </div>
+        {/* Tab Content */}
+        <div className="animate-fade-in">
 
-                  {isEditingProfile ? (
-                    <form onSubmit={handleUpdateProfile} className="mt-6 bg-gray-50 p-6 rounded-2xl animate-in zoom-in-95">
-                      <h4 className="font-bold mb-4">Edit Profile details</h4>
-                      <div className="grid grid-cols-1 md:grid-cols-2 gap-4 mb-4">
-                        <input className="p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0277bd]" value={editForm.name} onChange={e => setEditForm({...editForm, name: e.target.value})} placeholder="Name" required />
-                        <input className="p-3 rounded-xl border border-gray-200 focus:ring-2 focus:ring-[#0277bd]" value={editForm.location} onChange={e => setEditForm({...editForm, location: e.target.value})} placeholder="Location" />
-                      </div>
-                      <div className="mb-4">
-                        <p className="font-bold text-sm mb-2 text-gray-700">Skills</p>
-                        <div className="flex flex-wrap gap-2">
-                          {CATEGORIES.filter(c => c !== 'All Categories').map(skill => (
-                            <button type="button" key={skill} onClick={() => handleSkillToggle(skill)} className={`px-3 py-1 rounded-full text-sm font-bold border transition-colors active:scale-95 ${editForm.skills.includes(skill) ? 'bg-[#0277bd] text-white border-[#0277bd]' : 'bg-white text-gray-600 border-gray-200 hover:border-[#0277bd]'}`}>
-                              {skill}
-                            </button>
-                          ))}
-                        </div>
-                      </div>
-                      <label className="flex items-center gap-2 mb-6 cursor-pointer select-none">
-                        <input type="checkbox" className="w-5 h-5 rounded text-[#0277bd] focus:ring-[#0277bd]" checked={editForm.isOnline} onChange={e => setEditForm({...editForm, isOnline: e.target.checked})} />
-                        <span className="font-bold text-gray-700">I am Online ⚡ (Available for Instant Gigs)</span>
-                      </label>
-                      <div className="flex gap-2">
-                        <button type="submit" className="px-6 py-2 bg-[#0277bd] text-white font-bold rounded-xl hover:bg-[#01579b] shadow-md transition-transform active:scale-95">Save Profile</button>
-                        <button type="button" onClick={() => setIsEditingProfile(false)} className="px-6 py-2 bg-gray-200 text-gray-700 font-bold rounded-xl hover:bg-gray-300">Cancel</button>
-                      </div>
-                    </form>
-                  ) : (
-                    <div className="mt-6 border-t border-gray-100 pt-6">
-                      <div className="grid grid-cols-2 md:grid-cols-4 gap-4 text-center">
-                        <div className="p-4 bg-gray-50 rounded-2xl">
-                          <p className="text-gray-500 text-xs font-bold tracking-wider mb-1">RATING</p>
-                          <p className="text-2xl font-black text-[#0277bd] flex items-center justify-center gap-1"><Star size={20} fill="currentColor" /> {profile.ratings?.average || 'N/A'}</p>
-                        </div>
-                        <div className="p-4 bg-gray-50 rounded-2xl">
-                          <p className="text-gray-500 text-xs font-bold tracking-wider mb-1">REVIEWS</p>
-                          <p className="text-2xl font-black text-gray-800">{profile.ratings?.count || 0}</p>
-                        </div>
-                        <div className="p-4 bg-gray-50 rounded-2xl">
-                          <p className="text-gray-500 text-xs font-bold tracking-wider mb-1">STATUS</p>
-                          <p className={`text-lg font-black mt-1 ${profile.isOnline ? 'text-green-600' : 'text-gray-400'}`}>{profile.isOnline ? 'ONLINE ⚡' : 'OFFLINE'}</p>
-                        </div>
-                      </div>
-                      <div className="mt-6">
-                         <p className="text-sm font-bold text-gray-400 uppercase tracking-wider mb-2">My Skills Stack</p>
-                         <div className="flex flex-wrap gap-2">
-                           {profile.skills?.length > 0 ? profile.skills.map(s => <span key={s} className="px-3 py-1 bg-[#e0f7fa] text-[#0277bd] font-bold text-sm rounded-lg">{s}</span>) : <span className="text-gray-400 italic">No skills listed yet.</span>}
-                         </div>
-                      </div>
-                    </div>
-                  )}
+          {/* ── BROWSE JOBS TAB ── */}
+          {activeTab === 'find' && (
+            <div className="bg-white p-8 rounded-2xl shadow-md border border-gray-100 min-h-[400px]">
+              {renderInlineError()}
+              {/* Filters */}
+              <div className="flex flex-col sm:flex-row gap-3 mb-8">
+                <select
+                  className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-semibold text-gray-700 focus:ring-2 focus:ring-[#0277bd] focus:outline-none"
+                  value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}
+                >
+                  {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
+                </select>
+                <select
+                  className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-base font-semibold text-gray-700 focus:ring-2 focus:ring-[#0277bd] focus:outline-none"
+                  value={filterType} onChange={(e) => setFilterType(e.target.value)}
+                >
+                  <option value="all">Any Urgency</option>
+                  <option value="instant">Instant ⚡</option>
+                  <option value="part-time">Part-Time</option>
+                </select>
+                <input
+                  type="text"
+                  placeholder="City or area…"
+                  className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl text-base text-gray-700 focus:ring-2 focus:ring-[#0277bd] focus:outline-none"
+                  value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)}
+                />
+              </div>
+
+              {tabLoading ? renderTabSkeletons() : jobs.length === 0 ? (
+                <div className="py-20 flex flex-col items-center bg-gray-50 rounded-2xl border border-dashed border-gray-300">
+                  <AlertCircle size={48} className="text-gray-300 mb-4" />
+                  <p className="text-lg font-semibold text-gray-500">No open gigs at the moment.</p>
                 </div>
-              </div>
-
-              {/* Activity Feed Side Panel */}
-              <div className="bg-white p-6 rounded-3xl shadow-xl border border-gray-100 h-fit max-h-[600px] overflow-y-auto">
-                <h3 className="text-xl font-black text-gray-900 mb-6 flex items-center gap-2 sticky top-0 bg-white/90 backdrop-blur pb-2">
-                  <Activity className="text-[#0277bd]" /> Activity Feed
-                </h3>
-                {activityFeed.length === 0 ? (
-                  <p className="text-gray-400 italic text-center py-8">No recent activity found.</p>
-                ) : (
-                  <div className="space-y-6 relative before:absolute before:inset-0 before:ml-5 before:-translate-x-px md:before:mx-auto md:before:translate-x-0 before:h-full before:w-0.5 before:bg-gradient-to-b before:from-transparent before:via-gray-200 before:to-transparent">
-                    {activityFeed.map((item, idx) => (
-                      <div key={idx} className="relative flex items-center justify-between md:justify-normal md:odd:flex-row-reverse group is-active">
-                         <div className="flex items-center justify-center w-10 h-10 rounded-full border-4 border-white bg-[#0277bd] text-white shadow shrink-0 md:order-1 md:group-odd:-translate-x-1/2 md:group-even:translate-x-1/2 z-10 transition-transform group-hover:scale-110">
-                           {item.type === 'job' ? <Briefcase size={16} /> : <Star size={16} />}
-                         </div>
-                         <div className="w-[calc(100%-4rem)] md:w-[calc(50%-2.5rem)] bg-gray-50 p-4 rounded-2xl shadow-sm hover:shadow-md transition-shadow">
-                           <div className="flex justify-between items-start mb-1 text-xs font-bold text-gray-400">
-                             {new Date(item.date).toLocaleDateString()}
-                           </div>
-                           <p className="text-sm font-bold text-gray-800">{item.title}</p>
-                           {item.meta && <p className="text-xs text-gray-500 mt-1 line-clamp-2">{item.meta}</p>}
-                         </div>
+              ) : (
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                  {jobs.map(gig => (
+                    <div key={gig._id} className="group bg-white border border-gray-200 hover:border-[#0277bd] hover:shadow-xl transition-all duration-200 rounded-2xl flex flex-col overflow-hidden">
+                      <div className="h-36 bg-gray-50 flex items-center justify-center border-b border-gray-100 group-hover:bg-[#e0f7fa] transition-colors duration-300">
+                        <Briefcase size={44} className="text-[#0277bd]/25 group-hover:text-[#0277bd] group-hover:scale-110 transition-all duration-300" />
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
+                      <div className="p-5 flex flex-col flex-1">
+                        <div className="flex justify-between items-center mb-2">
+                          <span className="text-xs font-bold uppercase tracking-wide text-[#0277bd]">{gig.category || 'General'}</span>
+                          <span className="flex items-center gap-1 text-xs font-semibold text-gray-500 bg-gray-50 px-2 py-1 rounded-lg">
+                            <Star size={11} fill="#eab308" className="text-yellow-500" /> {gig.providerId?.ratings?.average || 'New'}
+                          </span>
+                        </div>
+                        <h3 className="text-lg font-bold text-gray-900 mb-1 leading-snug line-clamp-2">{gig.title}</h3>
+                        <p className="text-sm text-gray-500 mb-4 flex items-center gap-1">
+                          <UserIcon size={13} /> {gig.providerId?.name || 'Local Provider'}
+                        </p>
+                        <div className="mt-auto space-y-2">
+                          <div className="flex items-center gap-1.5 text-sm text-gray-500">
+                            <MapPin size={14} className="text-gray-400 shrink-0" />
+                            <span className="truncate">{gig.location || 'Location not specified'}</span>
+                          </div>
+                          <p className="text-2xl font-black text-green-700">
+                            ₹{gig.stipend}<span className="text-sm font-semibold text-gray-400">/{gig.payRate || 'hr'}</span>
+                          </p>
+                        </div>
+                      </div>
+                      <div className="px-5 pb-5">
+                        {appliedJobIds.has(gig._id) ? (
+                          <button disabled className="w-full py-3 rounded-xl text-base font-semibold flex items-center justify-center gap-2 bg-green-50 text-green-700 border border-green-200 cursor-not-allowed">
+                            <CheckCircle size={16} /> Applied ✓
+                          </button>
+                        ) : (
+                          <button
+                            onClick={() => handleApply(gig._id)}
+                            disabled={applyingId === gig._id}
+                            className="w-full py-3 rounded-xl text-base font-semibold flex items-center justify-center gap-2 transition-all text-white bg-[#0277bd] hover:bg-[#01579b] shadow-md hover:shadow-lg disabled:opacity-60"
+                          >
+                            {applyingId === gig._id ? 'Applying…' : 'Apply Now'}
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
             </div>
           )}
 
-          {/* FIND GIGS TAB */}
-          {activeTab === 'find' && (
-             <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 min-h-[400px]">
-               {renderInlineError()}
-               <div className="flex flex-col md:flex-row justify-between items-center mb-8 gap-4">
-                 <h2 className="text-2xl font-black text-gray-900 flex items-center gap-2"><Search className="text-[#0277bd]" /> Explore Opportunities</h2>
-                 <div className="flex flex-col sm:flex-row gap-2 w-full md:w-auto">
-                    <select className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 focus:ring-2 focus:ring-[#0277bd]" value={filterCategory} onChange={(e) => setFilterCategory(e.target.value)}>
-                      {CATEGORIES.map(c => <option key={c} value={c}>{c}</option>)}
-                    </select>
-                    <select className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 focus:ring-2 focus:ring-[#0277bd]" value={filterType} onChange={(e) => setFilterType(e.target.value)}>
-                      <option value="all">Any Urgency</option>
-                      <option value="instant">Instant ⚡</option>
-                      <option value="part-time">Part-Time</option>
-                    </select>
-                    <input type="text" placeholder="City or area..." className="flex-1 p-3 bg-gray-50 border border-gray-200 rounded-xl font-bold text-gray-700 focus:ring-2 focus:ring-[#0277bd]" value={filterLocation} onChange={(e) => setFilterLocation(e.target.value)} />
-                 </div>
-               </div>
+          {/* ── MY APPLICATIONS TAB (all statuses, grouped) ── */}
+          {activeTab === 'applications' && (
+            <div className="bg-white p-8 rounded-2xl shadow-md border border-gray-100 min-h-[400px]">
+              {renderInlineError()}
+              <h2 className="text-2xl font-bold text-gray-900 flex items-center gap-3 mb-6">
+                <Briefcase className="text-[#0277bd]" /> My Applications
+              </h2>
+              {tabLoading ? (
+                <div className="space-y-4 animate-pulse">
+                  {[1,2,3].map(n => <div key={n} className="w-full h-24 bg-gray-100 rounded-2xl" />)}
+                </div>
+              ) : myJobs.length === 0 ? (
+                <p className="py-12 text-center text-base text-gray-400 border-2 border-dashed rounded-2xl">
+                  No applications yet — browse jobs to get started!
+                </p>
+              ) : (
+                <div className="space-y-4">
+                  {myJobs.map(job => {
+                    const appInfo = job.applicants?.find(a => {
+                      const sid = typeof a.seeker === 'object' ? a.seeker?._id : a.seeker;
+                      return sid?.toString() === (user?.id || user?._id)?.toString();
+                    });
+                    const isCompleted  = job.status === 'completed';
+                    const isInProgress = job.status === 'in-progress';
+                    const isAccepted   = job.status === 'accepted' || appInfo?.status === 'accepted';
+                    const isRejected   = appInfo?.status === 'rejected';
+                    const providerName = typeof job.createdBy === 'object' ? job.createdBy?.name : 'Unknown';
 
-               {tabLoading ? renderTabSkeletons() : jobs.length === 0 ? (
-                 <div className="py-20 flex flex-col items-center bg-gray-50 rounded-3xl border border-dashed border-gray-300">
-                    <AlertCircle size={48} className="text-gray-300 mb-4" />
-                    <p className="text-lg font-bold text-gray-500">No open gigs at the moment.</p>
-                 </div>
-               ) : (
-                 <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in-95 duration-500">
-                    {jobs.map(gig => (
-                      <div key={gig._id} className="group relative bg-white border border-gray-200 hover:border-[#0277bd] hover:shadow-xl transition-all rounded-3xl p-0 flex flex-col overflow-hidden">
-                         <div className="h-40 bg-gray-50 relative overflow-hidden flex items-center justify-center p-6 border-b border-gray-100 group-hover:bg-[#e0f7fa] transition-colors duration-500">
-                             <Briefcase size={48} className="text-[#0277bd]/30 group-hover:scale-110 group-hover:text-[#0277bd] transition-all duration-500" />
-                         </div>
-                         <div className="p-6 flex flex-col flex-1">
-                           <div className="flex justify-between items-start mb-2">
-                             <span className="text-xs font-black uppercase tracking-wider text-[#0277bd]">{gig.category || 'General'}</span>
-                             <div className="flex gap-1 items-center bg-gray-50 px-2 py-1 rounded text-xs font-bold text-gray-600"><Star size={12} fill="#eab308" className="text-yellow-500" /> {gig.providerId?.ratings?.average || 'New'}</div>
-                           </div>
-                           <h3 className="text-lg font-black text-gray-900 mb-1 leading-tight line-clamp-2" title={gig.title}>{gig.title}</h3>
-                           <p className="text-sm font-bold text-gray-400 line-clamp-1 mb-4 flex items-center gap-1"><UserIcon size={14} /> {gig.providerId?.name || 'Local Provider'}</p>
-                           
-                           <div className="mt-auto">
-                             <div className="flex items-center gap-2 text-sm text-gray-500 mb-3"><MapPin size={16} className="text-gray-400 shrink-0" /> <span className="truncate">{gig.location || 'Location not specified'}</span></div>
-                             <div className="flex flex-col">
-                                <span className="text-xs text-gray-400 font-bold uppercase tracking-wider">Pay Rate</span>
-                                <span className="text-2xl font-black text-green-700">₹{gig.stipend}<span className="text-sm text-gray-500 font-bold">/{gig.payRate || 'hour'}</span></span>
-                             </div>
-                           </div>
-                         </div>
-                         <div className="p-4 border-t border-gray-100 bg-white">
-                           {appliedJobIds.has(gig._id) ? (
-                             <button
-                               disabled
-                               className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 bg-green-100 text-green-700 border border-green-200 cursor-not-allowed"
-                             >
-                               <CheckCircle size={16} /> Applied ✓
-                             </button>
-                           ) : (
-                             <button
-                               onClick={() => handleApply(gig._id)}
-                               disabled={applyingId === gig._id}
-                               className="w-full py-3 rounded-xl font-black text-sm flex items-center justify-center gap-2 transition-transform active:scale-95 text-white shadow-md bg-[#0277bd] hover:bg-[#01579b] disabled:opacity-60 disabled:cursor-not-allowed"
-                             >
-                               {applyingId === gig._id ? 'Applying…' : 'Apply Now'}
-                             </button>
-                           )}
-                         </div>
-                      </div>
-                    ))}
-                 </div>
-               )}
-             </div>
-          )}
+                    const statusCls = isCompleted  ? 'bg-purple-100 text-purple-700' :
+                                      isInProgress ? 'bg-blue-100 text-[#0277bd]'   :
+                                      isAccepted   ? 'bg-cyan-100 text-cyan-700'    :
+                                      isRejected   ? 'bg-red-100 text-red-700'      :
+                                                     'bg-yellow-100 text-yellow-700';
+                    const statusLabel = isCompleted ? 'Completed' : isInProgress ? 'In Progress' :
+                                        isAccepted  ? 'Accepted'  : isRejected   ? 'Rejected' : 'Pending';
 
-          {/* MY APPLICATIONS & PAST WORKS TABS */}
-          {(activeTab === 'applications' || activeTab === 'history') && (
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 min-h-[400px]">
-               {renderInlineError()}
-               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3 mb-8">
-                 {activeTab === 'applications' ? <><Briefcase className="text-[#0277bd]" /> Active Applications</> : <><CheckCircle className="text-green-600" /> Completed Works</>}
-               </h2>
-               
-               {tabLoading ? (
-                 <div className="space-y-4 animate-pulse">
-                    {[1,2,3].map(n => <div key={n} className="w-full h-24 bg-gray-100 rounded-3xl"></div>)}
-                 </div>
-               ) : myJobs.length === 0 ? (
-                 <p className="py-8 text-center text-gray-400 italic border-2 border-dashed rounded-2xl">Nothing to see here yet.</p>
-               ) : (
-                 <div className="space-y-4 animate-in fade-in duration-500">
-                    {myJobs.map(job => {
-                      const appInfo = job.applicants?.find(a => {
-                        const sid = typeof a.seeker === 'object' ? a.seeker?._id : a.seeker;
-                        return sid?.toString() === (user?.id || user?._id)?.toString();
-                      });
-                      const isCompleted = job.status === 'completed';
-                      const isInProgress = job.status === 'in-progress';
-                      const isAccepted = job.status === 'accepted' || appInfo?.status === 'accepted';
-                      const isRejected = appInfo?.status === 'rejected';
-                      if (activeTab === 'applications' && isCompleted) return null;
-                      if (activeTab === 'history' && !isCompleted) return null;
-
-                      const providerName = typeof job.createdBy === 'object' ? job.createdBy?.name : 'Unknown';
-
-                      return (
-                        <div key={job._id} className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 bg-gray-50 border border-gray-100 rounded-3xl hover:bg-white hover:shadow-md transition-all group gap-4">
-                          <div className="w-full md:w-auto">
-                            <h3 className="font-black text-lg text-gray-900 group-hover:text-[#0277bd] transition-colors">{job.title}</h3>
-                            <p className="text-sm font-bold text-gray-500 mb-3">Provider: {providerName}</p>
-                            <div className="flex gap-2 flex-wrap">
-                               <span className="px-3 py-1 bg-white border border-gray-200 text-xs font-black text-gray-700 rounded-lg">{job.category}</span>
-                               <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-black rounded-lg">₹{job.payAmount || job.price} / {job.payRate}</span>
-                               <span className={`px-3 py-1 text-xs font-black rounded-lg uppercase tracking-wider ${
-                                 isCompleted ? 'bg-purple-100 text-purple-700' :
-                                 isInProgress ? 'bg-blue-100 text-[#0277bd]' :
-                                 isAccepted ? 'bg-cyan-100 text-cyan-700' :
-                                 isRejected ? 'bg-red-100 text-red-700' : 'bg-yellow-100 text-yellow-700'
-                               }`}>
-                                 {isCompleted ? 'Completed' : isInProgress ? 'In Progress' : isAccepted ? 'Accepted' : isRejected ? 'Rejected' : 'Pending'}
-                               </span>
-                               {isCompleted && job.seekerReviewed && (
-                                 <span className="px-3 py-1 bg-green-100 text-green-700 text-xs font-black rounded-lg">Reviewed ✓</span>
-                               )}
-                            </div>
-                          </div>
-                          
-                          <div className="flex flex-col sm:flex-row items-center gap-3 shrink-0">
-                            {isCompleted && !job.seekerReviewed && (
-                              <button 
-                                onClick={() => setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: providerName })}
-                                className="px-6 py-2.5 bg-[#0277bd] text-white font-black rounded-xl hover:bg-[#01579b] shadow-md transition-transform active:scale-95 flex items-center gap-2 text-sm"
-                              >
-                                <Star size={15} fill="currentColor" /> Leave Review
-                              </button>
+                    return (
+                      <div key={job._id} className="flex flex-col md:flex-row justify-between items-start md:items-center p-6 bg-gray-50 border border-gray-100 rounded-2xl hover:bg-white hover:shadow-md transition-all gap-4">
+                        <div className="flex-1 min-w-0">
+                          <h3 className="text-lg font-bold text-gray-900 truncate">{job.title}</h3>
+                          <p className="text-sm text-gray-500 mt-0.5">Provider: <span className="font-semibold text-gray-700">{providerName}</span></p>
+                          <div className="flex gap-2 flex-wrap mt-3">
+                            <span className="px-3 py-1 bg-white border border-gray-200 text-sm font-semibold text-gray-600 rounded-lg">{job.category}</span>
+                            <span className="px-3 py-1 bg-green-50 text-green-700 text-sm font-semibold rounded-lg">₹{job.payAmount || job.price}/{job.payRate}</span>
+                            <span className={`px-3 py-1 text-sm font-semibold rounded-lg ${statusCls}`}>{statusLabel}</span>
+                            {isCompleted && job.seekerReviewed && (
+                              <span className="px-3 py-1 bg-green-100 text-green-700 text-sm font-semibold rounded-lg">Reviewed ✓</span>
                             )}
                           </div>
                         </div>
-                      )
-                    })}
-                 </div>
-               )}
-            </div>
-          )}
-
-          {/* RECENT EMPLOYERS TAB */}
-          {activeTab === 'employers' && (
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 min-h-[400px]">
-               {renderInlineError()}
-               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3 mb-8"><Building2 className="text-[#0277bd]" /> Recent Employers</h2>
-               {tabLoading ? renderTabSkeletons() : (
-                  <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6 animate-in fade-in zoom-in-95">
-                     {Array.from(new Set(myJobs.filter(j => j.status === 'completed' || j.applicants.some(a => (a.seeker === user.id || a.seeker._id === user.id) && a.status === 'accepted')).map(j => JSON.stringify(j.createdBy)))).map(pStr => {
-                        const provider = JSON.parse(pStr);
-                        if (!provider || !provider._id) return null;
-                        return (
-                          <div key={provider._id} className="p-6 border border-gray-100 rounded-3xl bg-gray-50 flex items-center gap-4 hover:shadow-md transition-shadow">
-                             <div className="p-3 bg-white shadow-sm rounded-full text-[#0277bd] border border-gray-100"><UserIcon /></div>
-                             <div>
-                               <p className="font-black text-lg text-gray-900">{provider.name}</p>
-                               <p className="text-xs text-gray-500 font-bold">{provider.email}</p>
-                             </div>
-                          </div>
-                        )
-                     })}
-                  </div>
-               )}
-            </div>
-          )}
-
-          {/* RATINGS RECEIVED TAB */}
-          {activeTab === 'ratings' && (
-            <div className="bg-white p-8 rounded-3xl shadow-xl border border-gray-100 min-h-[400px]">
-               {renderInlineError()}
-               <h2 className="text-2xl font-black text-gray-900 flex items-center gap-3 mb-8"><Star className="text-[#0277bd]" fill="currentColor" /> Ratings Received</h2>
-               {tabLoading ? renderTabSkeletons() : ratingsReceived.length === 0 ? (
-                  <div className="py-12 flex flex-col items-center border border-dashed rounded-3xl bg-gray-50 text-gray-400">
-                    <Star size={40} className="mb-4 text-gray-300" />
-                    <p className="font-bold">No reviews received yet. Keep working hard!</p>
-                  </div>
-               ) : (
-                  <div className="grid grid-cols-1 md:grid-cols-2 gap-6 animate-in fade-in zoom-in-95">
-                    {ratingsReceived.map(rating => (
-                       <div key={rating._id} className="p-6 bg-gradient-to-br from-yellow-50 to-white border border-yellow-100 rounded-3xl hover:shadow-lg transition-all">
-                          <div className="flex justify-between items-start mb-4">
-                            <div>
-                               <p className="font-black text-lg">{rating.from?.name || 'Anonymous'}</p>
-                               <p className="text-xs text-gray-500 uppercase font-bold tracking-wider mt-1">{rating.job?.title}</p>
-                            </div>
-                            <div className="flex items-center gap-1 bg-yellow-400 text-yellow-900 px-3 py-1 rounded-full font-black text-sm shadow-sm">
-                               <Star size={14} fill="currentColor" /> {rating.score}.0
-                            </div>
-                          </div>
-                          <p className="text-gray-700 italic border-l-4 border-yellow-300 pl-4 bg-white/50 p-2 rounded-r-lg">"{rating.comment}"</p>
-                          <p className="text-xs text-gray-400 mt-4 text-right">{new Date(rating.createdAt).toLocaleDateString()}</p>
-                       </div>
-                    ))}
-                  </div>
-               )}
+                        {(isAccepted || isInProgress) && (
+                          <button
+                            onClick={() => setChatJob({
+                              id: job._id,
+                              title: job.title,
+                              receiverId: typeof job.createdBy === 'object' ? job.createdBy?._id : job.createdBy,
+                            })}
+                            style={{
+                              display: 'flex', alignItems: 'center', gap: 6,
+                              padding: '0.5rem 1rem', borderRadius: 10,
+                              background: '#eff6ff', color: '#0277bd',
+                              fontWeight: 700, fontSize: '0.82rem', cursor: 'pointer',
+                              border: '1px solid #bfdbfe',
+                              transition: 'all 0.15s ease',
+                            }}
+                            onMouseEnter={e => e.currentTarget.style.background='#dbeafe'}
+                            onMouseLeave={e => e.currentTarget.style.background='#eff6ff'}
+                          >
+                            💬 Chat
+                          </button>
+                        )}
+                        {isCompleted && !job.seekerReviewed && (
+                          <button
+                            onClick={() => setReviewModal({ jobId: job._id, jobTitle: job.title, receiverName: providerName })}
+                            className="px-5 py-2.5 bg-[#0277bd] text-white text-base font-semibold rounded-xl hover:bg-[#01579b] shadow-md transition-all flex items-center gap-2 shrink-0"
+                          >
+                            <Star size={15} fill="currentColor" /> Leave Review
+                          </button>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
             </div>
           )}
 

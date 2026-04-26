@@ -125,4 +125,20 @@ const getUserReviews = async (req, res) => {
   }
 };
 
-module.exports = { createReview, getJobReviews, getUserReviews };
+/**
+ * GET /api/reviews/about-me
+ * Get all reviews received by the currently logged-in user
+ */
+const getMyReceivedReviews = async (req, res) => {
+  try {
+    const reviews = await Review.find({ receiver: req.user._id })
+      .populate("reviewer", "name role")
+      .populate("job", "title")
+      .sort({ createdAt: -1 });
+    res.status(200).json({ reviews });
+  } catch (error) {
+    res.status(500).json({ message: "Server error", error: error.message });
+  }
+};
+
+module.exports = { createReview, getJobReviews, getUserReviews, getMyReceivedReviews };

@@ -27,6 +27,12 @@ app.use("/api/jobs", require("./routes/jobRoutes"));
 app.use("/api/ratings", require("./routes/ratingRoutes"));
 app.use("/api/payments", require("./routes/paymentRoutes"));
 app.use("/api/reviews", require("./routes/reviewRoutes"));
+app.use("/api/seeker", require("./routes/seekerRoutes"));
+app.use("/api/history", require("./routes/historyRoutes"));
+app.use("/api/history-review", require("./routes/historyReviewRoutes"));
+app.use("/api/notifications",  require("./routes/notificationRoutes"));
+app.use("/api/messages",       require("./routes/messageRoutes"));
+
 
 // Test route
 app.get("/", (req, res) => {

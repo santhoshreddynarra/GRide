@@ -13,7 +13,18 @@ import {
   Clock,
   TrendingUp,
   FileText,
+  Phone,
+  Heart,
+  Gift,
+  HelpCircle,
+  Copy,
+  Share2,
+  Calendar,
+  Users,
 } from "lucide-react";
+import EarningsSection from "./EarningsSection";
+import ProviderStatsSection from "./ProviderStatsSection";
+import BadgeList from "./BadgeList";
 
 // ─── helpers ────────────────────────────────────────────────────────────────
 
@@ -50,10 +61,13 @@ export default function ProfilePage() {
   const [loading, setLoading]       = useState(true);
   const [apiError, setApiError]     = useState("");
   const [jobs, setJobs]             = useState([]);
+  const [reviews, setReviews]       = useState([]);
   const [isEditing, setIsEditing]   = useState(false);
   const [saveMsg, setSaveMsg]       = useState("");
+  const [copiedRef, setCopiedRef]   = useState(false);
   const [editForm, setEditForm]     = useState({
     name: "", location: "", companyName: "", skills: [], isOnline: false,
+    phone: "", gender: "", dob: "", emergencyContact: "",
   });
 
   // ── 3. Fetch user from backend (fallback to localStorage) ─────────────────
@@ -106,11 +120,15 @@ export default function ProfilePage() {
   useEffect(() => {
     if (user) {
       setEditForm({
-        name:        user.name        || "",
-        location:    user.location    || "",
-        companyName: user.companyName || "",
-        skills:      user.skills      || [],
-        isOnline:    user.isOnline    || false,
+        name:             user.name             || "",
+        location:         user.location         || "",
+        companyName:      user.companyName      || "",
+        skills:           user.skills           || [],
+        isOnline:         user.isOnline         || false,
+        phone:            user.phone            || "",
+        gender:           user.gender           || "",
+        dob:              user.dob              || "",
+        emergencyContact: user.emergencyContact || "",
       });
     }
   }, [user]);
@@ -132,6 +150,23 @@ export default function ProfilePage() {
     };
     fetchJobs();
   }, [user, token]);
+
+  // Fetch reviews received by this user (non-fatal)
+  useEffect(() => {
+    if (!token) return;
+    const fetchReviews = async () => {
+      try {
+        const res = await fetch("/api/reviews/about-me", {
+          headers: { Authorization: `Bearer ${token}` },
+        });
+        if (res.ok) {
+          const data = await res.json();
+          setReviews(data.reviews || []);
+        }
+      } catch { /* non-fatal */ }
+    };
+    fetchReviews();
+  }, [token]);
 
   // ── 4. Save profile ───────────────────────────────────────────────────────
   const handleUpdate = async (e) => {
@@ -279,6 +314,18 @@ export default function ProfilePage() {
         <div style={{ display: "flex", gap: "0.75rem" }}>
           <button
             className="action-btn"
+            onClick={() => navigate("/reviews/me")}
+            style={{
+              padding: "0.5rem 1.25rem", borderRadius: 10,
+              background: "#fffbeb", color: "#b45309",
+              fontWeight: 600, fontSize: "0.9rem", border: "1px solid #fde68a",
+              display: "flex", alignItems: "center", gap: "0.4rem",
+            }}
+          >
+            <Star size={15} /> My Reviews
+          </button>
+          <button
+            className="action-btn"
             onClick={() => navigate(isProvider ? "/provider/dashboard" : "/seeker/dashboard")}
             style={{
               padding: "0.5rem 1.25rem", borderRadius: 10,
@@ -417,7 +464,16 @@ export default function ProfilePage() {
           </div>
         </div>
 
-        {/* ── Edit Form ── */}
+        {/* ── Earned Badges ── */}
+        {BadgeList && (
+          <div style={{ marginBottom: '1.5rem' }}>
+            <BadgeList
+              user={user}
+              jobsPosted={isProvider ? jobs.length : 0}
+            />
+          </div>
+        )}
+
         {isEditing && (
           <div style={{
             background: "white", borderRadius: 20, padding: "2rem",
@@ -696,6 +752,316 @@ export default function ProfilePage() {
             </div>
           </div>
         </div>
+
+        {/* ── Reviews Section ── */}
+        <div style={{ marginTop: "1.5rem" }}>
+          <div
+            className="card-hover"
+            style={{
+              background: "white", borderRadius: 20, padding: "1.5rem",
+              border: `1px solid ${themeBorder}`,
+              boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+            }}
+          >
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "1.25rem" }}>
+              <h3 style={{ fontWeight: 700, fontSize: "1rem", color: "#0f172a", display: "flex", alignItems: "center", gap: "0.5rem" }}>
+                <Star size={16} color={themeColor} />
+                Reviews I've Received
+              </h3>
+              {reviews.length > 0 && (
+                <div style={{ display: "flex", alignItems: "center", gap: "0.4rem", background: "#fefce8", border: "1px solid #fde68a", borderRadius: 999, padding: "0.25rem 0.75rem" }}>
+                  <Star size={14} fill="#eab308" color="#eab308" />
+                  <span style={{ fontWeight: 800, color: "#92400e", fontSize: "0.9rem" }}>
+                    {(reviews.reduce((s, r) => s + r.rating, 0) / reviews.length).toFixed(1)}
+                  </span>
+                  <span style={{ color: "#a16207", fontSize: "0.8rem" }}>/ 5 ({reviews.length})</span>
+                </div>
+              )}
+            </div>
+
+            {reviews.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
+                <Star size={40} style={{ color: "#e2e8f0", marginBottom: "0.5rem" }} />
+                <p style={{ color: "#94a3b8", fontWeight: 500 }}>
+                  No reviews yet. Complete jobs to get reviewed!
+                </p>
+                <button
+                  className="action-btn"
+                  onClick={() => navigate("/reviews/me")}
+                  style={{ marginTop: "0.75rem", padding: "0.5rem 1.25rem", background: themeColor, color: "white", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem" }}
+                >
+                  View Full Reviews Page
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.75rem" }}>
+                {reviews.slice(0, 3).map((review) => (
+                  <div
+                    key={review._id}
+                    style={{
+                      padding: "1rem 1.25rem", borderRadius: 14,
+                      border: `1px solid ${themeBorder}`, background: themeBg,
+                    }}
+                  >
+                    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start", marginBottom: "0.5rem" }}>
+                      <div>
+                        <p style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.9rem" }}>
+                          {review.reviewer?.name || "Anonymous"}
+                        </p>
+                        <p style={{ fontSize: "0.75rem", color: "#94a3b8" }}>
+                          {review.job?.title || "Job"}
+                        </p>
+                      </div>
+                      <div style={{ display: "flex", alignItems: "center", gap: "2px" }}>
+                        {[1,2,3,4,5].map(s => (
+                          <Star key={s} size={13} fill={s <= review.rating ? "#eab308" : "transparent"} color={s <= review.rating ? "#eab308" : "#d1d5db"} />
+                        ))}
+                      </div>
+                    </div>
+                    {review.comment && (
+                      <p style={{ fontSize: "0.85rem", color: "#475569", fontStyle: "italic", borderLeft: `3px solid ${themeColor}`, paddingLeft: "0.6rem" }}>
+                        "{review.comment}"
+                      </p>
+                    )}
+                  </div>
+                ))}
+                {reviews.length > 3 && (
+                  <button
+                    className="action-btn"
+                    onClick={() => navigate("/reviews/me")}
+                    style={{ padding: "0.6rem", background: themeBg, color: themeColor, borderRadius: 10, fontWeight: 600, fontSize: "0.85rem", border: `1px solid ${themeBorder}` }}
+                  >
+                    View all {reviews.length} reviews →
+                  </button>
+                )}
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════
+            SECTION: Earnings Overview (seeker only)
+        ═══════════════════════════════════════════════════════ */}
+        {!isProvider && (
+          <div style={{ marginTop: "1.5rem" }}>
+            <EarningsSection token={token} />
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            SECTION: Jobs Overview (provider only)
+        ═══════════════════════════════════════════════════════ */}
+        {isProvider && (
+          <div style={{ marginTop: "1.5rem" }}>
+            <ProviderStatsSection token={token} />
+          </div>
+        )}
+
+        {/* ═══════════════════════════════════════════════════════
+            SECTION: Personal Details
+        ═══════════════════════════════════════════════════════ */}
+        <div style={{ marginTop: "1.5rem" }}>
+          <SectionCard title="Personal Details" icon={<UserIcon size={16} color={themeColor} />} themeColor={themeColor} themeBorder={themeBorder}>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(200px, 1fr))", gap: "1rem" }}>
+              <PersonalRow icon={<Mail size={14} />} label="Email" value={user?.email || "—"} />
+              <PersonalRow icon={<Phone size={14} />} label="Phone" value={user?.phone || "Not set"} />
+              <PersonalRow icon={<MapPin size={14} />} label="Location" value={user?.location || "Not set"} />
+              <PersonalRow icon={<Users size={14} />} label="Gender" value={user?.gender || "Not specified"} />
+              <PersonalRow icon={<Calendar size={14} />} label="Date of Birth" value={user?.dob ? new Date(user.dob).toLocaleDateString("en-IN", { day: "numeric", month: "short", year: "numeric" }) : "Not set"} />
+              <PersonalRow icon={<Heart size={14} />} label="Emergency Contact" value={user?.emergencyContact || "Not set"} />
+            </div>
+
+            {/* Edit extended fields */}
+            {isEditing && (
+              <div style={{ marginTop: "1.25rem", paddingTop: "1.25rem", borderTop: "1px solid #f1f5f9" }}>
+                <p style={{ fontSize: "0.82rem", fontWeight: 700, color: "#64748b", marginBottom: "0.75rem", textTransform: "uppercase", letterSpacing: "0.05em" }}>Extended Details</p>
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "0.75rem" }}>
+                  {[
+                    { key: "phone",            placeholder: "+91 98765 43210",  label: "Phone" },
+                    { key: "emergencyContact",  placeholder: "Name · Number",   label: "Emergency Contact" },
+                  ].map(({ key, placeholder, label }) => (
+                    <div key={key}>
+                      <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#64748b", marginBottom: "0.3rem" }}>{label}</label>
+                      <input
+                        value={editForm[key]}
+                        onChange={(e) => setEditForm({ ...editForm, [key]: e.target.value })}
+                        placeholder={placeholder}
+                        style={{ width: "100%", padding: "0.6rem 0.9rem", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }}
+                      />
+                    </div>
+                  ))}
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#64748b", marginBottom: "0.3rem" }}>Gender</label>
+                    <select
+                      value={editForm.gender}
+                      onChange={(e) => setEditForm({ ...editForm, gender: e.target.value })}
+                      style={{ width: "100%", padding: "0.6rem 0.9rem", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: "0.9rem", outline: "none", background: "white" }}
+                    >
+                      <option value="">Select</option>
+                      <option value="Male">Male</option>
+                      <option value="Female">Female</option>
+                      <option value="Non-binary">Non-binary</option>
+                      <option value="Prefer not to say">Prefer not to say</option>
+                    </select>
+                  </div>
+                  <div>
+                    <label style={{ display: "block", fontSize: "0.78rem", fontWeight: 600, color: "#64748b", marginBottom: "0.3rem" }}>Date of Birth</label>
+                    <input
+                      type="date"
+                      value={editForm.dob}
+                      onChange={(e) => setEditForm({ ...editForm, dob: e.target.value })}
+                      style={{ width: "100%", padding: "0.6rem 0.9rem", border: "1.5px solid #e2e8f0", borderRadius: 10, fontSize: "0.9rem", outline: "none", boxSizing: "border-box" }}
+                    />
+                  </div>
+                </div>
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════
+            SECTION: Previous Works
+        ═══════════════════════════════════════════════════════ */}
+        <div style={{ marginTop: "1.5rem" }}>
+          <SectionCard title="Previous Works" icon={<Briefcase size={16} color={themeColor} />} themeColor={themeColor} themeBorder={themeBorder}>
+            {jobs.filter(j => !j.isOpen || j.status === "completed").length === 0 ? (
+              <div style={{ textAlign: "center", padding: "2rem 1rem" }}>
+                <TrendingUp size={40} style={{ color: "#e2e8f0", marginBottom: "0.75rem" }} />
+                <p style={{ color: "#94a3b8", fontWeight: 500, marginBottom: "1rem" }}>
+                  No completed jobs yet. Start applying!
+                </p>
+                <button
+                  className="action-btn"
+                  onClick={() => navigate(isProvider ? "/provider/dashboard" : "/seeker/dashboard")}
+                  style={{ padding: "0.5rem 1.25rem", background: themeColor, color: "white", borderRadius: 10, fontWeight: 600, fontSize: "0.85rem" }}
+                >
+                  Go to Dashboard
+                </button>
+              </div>
+            ) : (
+              <div style={{ display: "flex", flexDirection: "column", gap: "0.65rem" }}>
+                {jobs.slice(0, 6).map((job) => (
+                  <div key={job._id} style={{
+                    display: "flex", justifyContent: "space-between", alignItems: "center",
+                    padding: "0.85rem 1.1rem", borderRadius: 12,
+                    background: "#fafafa", border: "1px solid #f1f5f9",
+                  }}>
+                    <div>
+                      <p style={{ fontWeight: 700, color: "#1e293b", fontSize: "0.92rem" }}>{job.title}</p>
+                      <p style={{ fontSize: "0.77rem", color: "#94a3b8", marginTop: 2 }}>
+                        {job.category}{job.location ? ` · ${job.location}` : ""}
+                        {(job.payAmount || job.price) ? ` · ₹${job.payAmount || job.price}/${job.payRate || "hr"}` : ""}
+                      </p>
+                    </div>
+                    <span style={{
+                      padding: "0.22rem 0.7rem", borderRadius: 999, fontSize: "0.73rem", fontWeight: 700,
+                      background: job.status === "completed" ? "#f0fdf4" : job.isOpen ? themeBg : "#f1f5f9",
+                      color: job.status === "completed" ? "#16a34a" : job.isOpen ? themeColor : "#64748b",
+                      border: `1px solid ${job.status === "completed" ? "#bbf7d0" : job.isOpen ? themeBorder : "#e2e8f0"}`,
+                      whiteSpace: "nowrap",
+                    }}>
+                      {job.status === "completed" ? "Completed" : job.isOpen ? "Active" : "Closed"}
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
+          </SectionCard>
+        </div>
+
+        {/* ═══════════════════════════════════════════════════════
+            SECTION: Help + Refer & Earn (side by side)
+        ═══════════════════════════════════════════════════════ */}
+        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "1.5rem", marginTop: "1.5rem" }}>
+
+          {/* Help */}
+          <SectionCard title="Help & Support" icon={<HelpCircle size={16} color={themeColor} />} themeColor={themeColor} themeBorder={themeBorder}>
+            <p style={{ fontSize: "0.88rem", color: "#64748b", marginBottom: "1.25rem", lineHeight: 1.6 }}>
+              Having trouble? Our support team is here to help you 24/7.
+            </p>
+            <div style={{ display: "flex", flexDirection: "column", gap: "0.6rem" }}>
+              <HelpItem q="How do I apply for a job?" />
+              <HelpItem q="When do I get paid?" />
+              <HelpItem q="How does the rating system work?" />
+            </div>
+            <a
+              href={`mailto:support@gigride.in?subject=Support Request from ${encodeURIComponent(user?.name || 'User')}`}
+              className="action-btn"
+              style={{
+                marginTop: "1.25rem", display: "flex", alignItems: "center",
+                justifyContent: "center", gap: "0.5rem",
+                padding: "0.65rem 1.25rem", borderRadius: 12,
+                background: themeColor, color: "white",
+                fontWeight: 700, fontSize: "0.88rem",
+                textDecoration: "none",
+              }}
+            >
+              <HelpCircle size={15} /> Need Help?
+            </a>
+          </SectionCard>
+
+          {/* Refer & Earn */}
+          <SectionCard title="Refer & Earn" icon={<Gift size={16} color={themeColor} />} themeColor={themeColor} themeBorder={themeBorder}>
+            <p style={{ fontSize: "0.88rem", color: "#64748b", marginBottom: "1.25rem", lineHeight: 1.6 }}>
+              Invite friends to GigRide and earn ₹100 for each successful referral!
+            </p>
+
+            {/* Referral code box */}
+            <div style={{
+              background: themeBg, border: `1.5px dashed ${themeColor}55`,
+              borderRadius: 12, padding: "0.85rem 1rem",
+              display: "flex", alignItems: "center", justifyContent: "space-between",
+              marginBottom: "1rem",
+            }}>
+              <div>
+                <p style={{ fontSize: "0.72rem", fontWeight: 700, color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em" }}>Your Code</p>
+                <p style={{ fontWeight: 900, fontSize: "1.2rem", color: themeColor, letterSpacing: 2, marginTop: 2 }}>
+                  {`GR${(user?.name || "USER").replace(/\s/g, "").toUpperCase().slice(0, 4)}${String(user?._id || user?.id || "0").slice(-4).toUpperCase()}`}
+                </p>
+              </div>
+              <button
+                className="action-btn"
+                onClick={() => {
+                  const code = `GR${(user?.name || "USER").replace(/\s/g, "").toUpperCase().slice(0, 4)}${String(user?._id || user?.id || "0").slice(-4).toUpperCase()}`;
+                  navigator.clipboard.writeText(code).catch(() => {});
+                  setCopiedRef(true);
+                  setTimeout(() => setCopiedRef(false), 2000);
+                }}
+                style={{
+                  padding: "0.4rem 0.85rem", borderRadius: 8, fontSize: "0.78rem",
+                  background: copiedRef ? "#16a34a" : themeColor, color: "white",
+                  fontWeight: 700, display: "flex", alignItems: "center", gap: "0.35rem",
+                  transition: "background 0.2s",
+                }}
+              >
+                <Copy size={13} /> {copiedRef ? "Copied!" : "Copy"}
+              </button>
+            </div>
+
+            <button
+              className="action-btn"
+              onClick={() => {
+                const code = `GR${(user?.name || "USER").replace(/\s/g, "").toUpperCase().slice(0, 4)}${String(user?._id || user?.id || "0").slice(-4).toUpperCase()}`;
+                if (navigator.share) {
+                  navigator.share({ title: "Join GigRide!", text: `Use my code ${code} to sign up on GigRide and earn ₹50 bonus!`, url: window.location.origin });
+                }
+              }}
+              style={{
+                width: "100%", padding: "0.65rem 1.25rem", borderRadius: 12,
+                background: "white", color: themeColor,
+                fontWeight: 700, fontSize: "0.88rem",
+                border: `1.5px solid ${themeColor}`,
+                display: "flex", alignItems: "center", justifyContent: "center", gap: "0.5rem",
+              }}
+            >
+              <Share2 size={15} /> Invite a Friend
+            </button>
+          </SectionCard>
+        </div>
+
+        {/* Bottom padding */}
+        <div style={{ height: "2rem" }} />
+
       </div>
     </div>
   );
@@ -731,3 +1097,63 @@ function StatTile({ icon, label, value, bg, border }) {
     </div>
   );
 }
+
+// ── SectionCard ───────────────────────────────────────────────────────────────
+function SectionCard({ title, icon, children, themeColor, themeBorder }) {
+  return (
+    <div
+      style={{
+        background: "white", borderRadius: 20, padding: "1.5rem",
+        border: `1px solid ${themeBorder || "#e2e8f0"}`,
+        boxShadow: "0 2px 12px rgba(0,0,0,0.04)",
+        transition: "box-shadow 0.2s ease",
+      }}
+      onMouseEnter={(e) => { e.currentTarget.style.boxShadow = "0 8px 30px rgba(0,0,0,0.08)"; }}
+      onMouseLeave={(e) => { e.currentTarget.style.boxShadow = "0 2px 12px rgba(0,0,0,0.04)"; }}
+    >
+      <h3 style={{
+        fontWeight: 700, fontSize: "1rem", color: "#0f172a",
+        marginBottom: "1.25rem", display: "flex", alignItems: "center", gap: "0.5rem",
+      }}>
+        {icon} {title}
+      </h3>
+      {children}
+    </div>
+  );
+}
+
+// ── PersonalRow ───────────────────────────────────────────────────────────────
+function PersonalRow({ icon, label, value }) {
+  return (
+    <div style={{
+      display: "flex", flexDirection: "column", gap: "0.2rem",
+      padding: "0.75rem 1rem", background: "#f8fafc", borderRadius: 12,
+      border: "1px solid #f1f5f9",
+    }}>
+      <div style={{
+        display: "flex", alignItems: "center", gap: "0.4rem",
+        fontSize: "0.72rem", fontWeight: 700,
+        color: "#94a3b8", textTransform: "uppercase", letterSpacing: "0.06em",
+      }}>
+        <span style={{ color: "#cbd5e1" }}>{icon}</span>
+        {label}
+      </div>
+      <p style={{ fontWeight: 600, color: "#1e293b", fontSize: "0.9rem" }}>{value}</p>
+    </div>
+  );
+}
+
+// ── HelpItem ──────────────────────────────────────────────────────────────────
+function HelpItem({ q }) {
+  return (
+    <div style={{
+      padding: "0.6rem 0.9rem", background: "#f8fafc",
+      borderRadius: 10, border: "1px solid #f1f5f9",
+      fontSize: "0.82rem", fontWeight: 500, color: "#475569",
+      cursor: "default",
+    }}>
+      ❓ {q}
+    </div>
+  );
+}
+

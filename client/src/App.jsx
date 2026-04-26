@@ -6,60 +6,132 @@ import ProviderDashboard from "./components/ProviderDashboard";
 import SeekerDashboard from "./components/SeekerDashboard";
 import ProfilePage from "./components/ProfilePage";
 import PaymentPage from "./pages/PaymentPage";
+import SeekerHistory from "./pages/SeekerHistory";
+import SeekerReview from "./pages/SeekerReview";
+import ProviderReview from "./pages/ProviderReview";
+import ReviewsPage from "./pages/ReviewsPage";
+import SplashScreen from "./components/SplashScreen";
 
-// Simple protected route wrapper
-const ProtectedRoute = ({ children, requiredRole }) => {
-  const token = localStorage.getItem("token") || localStorage.getItem("gigride_token");
-  const role = localStorage.getItem("role") || localStorage.getItem("gigride_role");
-  
-  if (!token || !role) {
+// ─── helpers ──────────────────────────────────────────────────────────────────
+const getToken = () =>
+  localStorage.getItem("token") || localStorage.getItem("gigride_token");
+
+const getRole = () =>
+  localStorage.getItem("role") || localStorage.getItem("gigride_role");
+
+const getUser = () => {
+  try {
     return (
-       <div className="min-h-screen flex items-center justify-center bg-gray-50">
-         <div className="bg-white p-8 rounded-3xl shadow-xl text-center border border-gray-100 max-w-sm w-full mx-4">
-            <h2 className="text-2xl font-black text-gray-900 mb-2">Session Expired</h2>
-            <p className="text-gray-600 mb-6 font-medium">Please sign in to continue.</p>
-            <a href="/login" className="px-6 py-3 bg-black text-white rounded-xl font-black inline-block w-full transition-transform active:scale-95 shadow-md hover:shadow-lg">Sign In Again</a>
-         </div>
-       </div>
+      JSON.parse(localStorage.getItem("user")) ||
+      JSON.parse(localStorage.getItem("gigride_user")) ||
+      {}
     );
+  } catch {
+    return {};
   }
-  if (requiredRole && role !== requiredRole) return <Navigate to="/" replace />;
-  
+};
+
+const roleDashboard = (role) =>
+  role === "provider" ? "/provider/dashboard" : "/seeker/dashboard";
+
+// ─────────────────────────────────────────────────────────────────────────────
+// ProtectedRoute — redirects to /login when no token
+// optionally enforces a specific role
+// ─────────────────────────────────────────────────────────────────────────────
+const ProtectedRoute = ({ children, requiredRole }) => {
+  const token = getToken();
+  const role  = getRole();
+
+  if (!token || !role) {
+    return <Navigate to="/login" replace />;
+  }
+
+  if (requiredRole && role !== requiredRole) {
+    // Wrong role → send them to their own dashboard
+    return <Navigate to={roleDashboard(role)} replace />;
+  }
+
   return children;
 };
 
+// ─────────────────────────────────────────────────────────────────────────────
+// PublicRoute — redirects to dashboard when already logged in
+// (prevents logged-in users from reaching /login or /register)
+// ─────────────────────────────────────────────────────────────────────────────
+const PublicRoute = ({ children }) => {
+  const token = getToken();
+  const role  = getRole();
+
+  if (token && role) {
+    return <Navigate to={roleDashboard(role)} replace />;
+  }
+
+  return children;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// HomeRoute — logged-in users land on their dashboard, otherwise show Home
+// ─────────────────────────────────────────────────────────────────────────────
+const HomeRoute = () => {
+  const token = getToken();
+  const role  = getRole();
+  if (token && role) return <Navigate to={roleDashboard(role)} replace />;
+  return <Home />;
+};
+
+// ─────────────────────────────────────────────────────────────────────────────
+// App
+// ─────────────────────────────────────────────────────────────────────────────
 export default function App() {
-  const user = (() => {
-    try {
-      return JSON.parse(localStorage.getItem("user") || localStorage.getItem("gigride_user") || "null") || {};
-    } catch { return {}; }
-  })();
+  const user = getUser();
 
   return (
     <BrowserRouter>
       <Routes>
-        <Route path="/" element={<Home />} />
-        <Route path="/login" element={<Login />} />
-        <Route path="/register" element={<Register />} />
-        
-        <Route 
-          path="/provider/dashboard" 
+        {/* Home — smart redirect if logged in */}
+        <Route path="/" element={<HomeRoute />} />
+
+        {/* Splash screen */}
+        <Route path="/splash" element={<SplashScreen />} />
+
+        {/* Public-only pages (redirect away if already logged in) */}
+        <Route
+          path="/login"
+          element={
+            <PublicRoute>
+              <Login />
+            </PublicRoute>
+          }
+        />
+        <Route
+          path="/register"
+          element={
+            <PublicRoute>
+              <Register />
+            </PublicRoute>
+          }
+        />
+
+        {/* Provider dashboard */}
+        <Route
+          path="/provider/dashboard"
           element={
             <ProtectedRoute requiredRole="provider">
               <ProviderDashboard user={user} />
             </ProtectedRoute>
-          } 
+          }
         />
         {/* backward-compat alias */}
         <Route path="/provider-dashboard" element={<Navigate to="/provider/dashboard" replace />} />
-        
-        <Route 
-          path="/seeker/dashboard" 
+
+        {/* Seeker dashboard */}
+        <Route
+          path="/seeker/dashboard"
           element={
             <ProtectedRoute requiredRole="seeker">
               <SeekerDashboard user={user} />
             </ProtectedRoute>
-          } 
+          }
         />
         {/* backward-compat alias */}
         <Route path="/seeker-dashboard" element={<Navigate to="/seeker/dashboard" replace />} />
@@ -83,6 +155,52 @@ export default function App() {
             </ProtectedRoute>
           }
         />
+
+        {/* Seeker history */}
+        <Route
+          path="/seeker/history"
+          element={
+            <ProtectedRoute requiredRole="seeker">
+              <SeekerHistory />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Seeker review */}
+        <Route
+          path="/seeker/review/:historyId"
+          element={
+            <ProtectedRoute requiredRole="seeker">
+              <SeekerReview />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Provider review */}
+        <Route
+          path="/provider/review/:jobId"
+          element={
+            <ProtectedRoute requiredRole="provider">
+              <ProviderReview />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Reviews received — any logged-in user */}
+        <Route
+          path="/reviews/me"
+          element={
+            <ProtectedRoute>
+              <ReviewsPage />
+            </ProtectedRoute>
+          }
+        />
+
+        {/* Seeker reviews alias */}
+        <Route path="/seeker/reviews" element={<Navigate to="/reviews/me" replace />} />
+
+        {/* Catch-all */}
+        <Route path="*" element={<Navigate to="/" replace />} />
       </Routes>
     </BrowserRouter>
   );
